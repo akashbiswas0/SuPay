@@ -3,18 +3,18 @@ module payment_splitter::payment_splitter {
     use sui::sui::SUI;
     use sui::balance::{Self, Balance};
     use sui::table::{Self, Table};
+    use sui::event;
 
     /// Error codes
     const ENotGroupMember: u64 = 1;
     const EAlreadyMember: u64 = 2;
     const EInsufficientFunds: u64 = 3;
-    const ENotExpensePayer: u64 = 5;
-    const EExpenseAlreadySettled: u64 = 6;
-    const ENoBalanceToWithdraw: u64 = 7;
-    const ENotGroupOwner: u64 = 8;
-    const ESelfPayment: u64 = 9;
+    const ENoBalanceToWithdraw: u64 = 6;
+    const ENotGroupOwner: u64 = 7;
+    const ESelfPayment: u64 = 8;
+    const EDebtNotFound: u64 = 11;
 
-    /// Group struct that manages members and expenses
+    /// Group struct that manages members, expenses, and debts
     public struct Group has key, store {
         id: UID,
         name: vector<u8>,
@@ -22,7 +22,14 @@ module payment_splitter::payment_splitter {
         members: vector<address>,
         expenses: vector<ID>,
         member_balances: Table<address, Balance<SUI>>,
+        // Track what each member is owed (positive values only)
+        member_credits: Table<address, u64>,
+        // Track what each member owes (positive values only)
+        member_debits: Table<address, u64>,
+        // Track all debts: debtor -> creditor -> amount
+        debt_matrix: Table<address, Table<address, u64>>,
         total_expenses: u64,
+        total_settlements: u64,
     }
 
     /// Expense struct representing a shared expense
@@ -35,6 +42,57 @@ module payment_splitter::payment_splitter {
         participants: vector<address>,
         shares: Table<address, u64>, // address -> share amount
         settled: bool,
+        timestamp: u64,
+    }
+
+    /// Debt record for tracking who owes whom
+    public struct Debt has store, drop {
+        debtor: address,
+        creditor: address,
+        amount: u64,
+        expense_id: ID,
+        paid: bool,
+    }
+
+    /// Settlement record for payment history
+    public struct Settlement has key, store {
+        id: UID,
+        group_id: ID,
+        from: address,
+        to: address,
+        amount: u64,
+        timestamp: u64,
+        note: vector<u8>,
+    }
+
+    /// Events
+    public struct ExpenseCreated has copy, drop {
+        expense_id: ID,
+        group_id: ID,
+        payer: address,
+        amount: u64,
+    }
+
+    public struct DebtCreated has copy, drop {
+        debtor: address,
+        creditor: address,
+        amount: u64,
+        expense_id: ID,
+    }
+
+    public struct DebtPaid has copy, drop {
+        debtor: address,
+        creditor: address,
+        amount: u64,
+    }
+
+    public struct NetBalanceUpdated has copy, drop {
+        group_id: ID,
+        member: address,
+        old_credit: u64,
+        old_debit: u64,
+        new_credit: u64,
+        new_debit: u64,
     }
 
     /// Create a new group
@@ -50,12 +108,19 @@ module payment_splitter::payment_splitter {
             members: vector::empty(),
             expenses: vector::empty(),
             member_balances: table::new(ctx),
+            member_credits: table::new(ctx),
+            member_debits: table::new(ctx),
+            debt_matrix: table::new(ctx),
             total_expenses: 0,
+            total_settlements: 0,
         };
         
         // Add creator as first member
         vector::push_back(&mut group.members, sender);
         table::add(&mut group.member_balances, sender, balance::zero<SUI>());
+        table::add(&mut group.member_credits, sender, 0);
+        table::add(&mut group.member_debits, sender, 0);
+        table::add(&mut group.debt_matrix, sender, table::new(ctx));
         
         transfer::share_object(group);
     }
@@ -72,9 +137,12 @@ module payment_splitter::payment_splitter {
         
         vector::push_back(&mut group.members, new_member);
         table::add(&mut group.member_balances, new_member, balance::zero<SUI>());
+        table::add(&mut group.member_credits, new_member, 0);
+        table::add(&mut group.member_debits, new_member, 0);
+        table::add(&mut group.debt_matrix, new_member, table::new(ctx));
     }
 
-    /// Create and pay for an expense
+    /// Create and pay for an expense with automatic debt tracking
     public entry fun create_expense(
         group: &mut Group,
         description: vector<u8>,
@@ -105,24 +173,34 @@ module payment_splitter::payment_splitter {
             description,
             payer: sender,
             amount,
-            participants: participants,
+            participants,
             shares: table::new(ctx),
             settled: false,
+            timestamp: tx_context::epoch(ctx),
         };
         
-        // Calculate shares
+        // Calculate shares and create debts
         let mut i = 0;
         let mut total_allocated = 0;
         while (i < vector::length(&participants)) {
             let participant = *vector::borrow(&participants, i);
             let share = if (i == vector::length(&participants) - 1) {
-                // Last person gets remainder to handle rounding
                 amount - total_allocated
             } else {
                 share_per_person
             };
             table::add(&mut expense.shares, participant, share);
             total_allocated = total_allocated + share;
+            
+            // Create debt if participant is not the payer
+            if (participant != sender) {
+                create_or_update_debt(group, participant, sender, share, expense_id_copy, ctx);
+                
+                // Update net balances
+                update_member_debit(group, participant, share, true);
+                update_member_credit(group, sender, share, true);
+            };
+            
             i = i + 1;
         };
         
@@ -134,43 +212,121 @@ module payment_splitter::payment_splitter {
         vector::push_back(&mut group.expenses, expense_id_copy);
         group.total_expenses = group.total_expenses + amount;
         
+        // Emit event
+        event::emit(ExpenseCreated {
+            expense_id: expense_id_copy,
+            group_id: object::uid_to_inner(&group.id),
+            payer: sender,
+            amount,
+        });
+        
         transfer::share_object(expense);
     }
 
-    /// Settle an expense by distributing funds to participants
-    public entry fun settle_expense(
+    /// Settle a specific debt between two members
+    public entry fun settle_debt(
         group: &mut Group,
-        expense: &mut Expense,
+        creditor: address,
+        payment: Coin<SUI>,
         ctx: &mut TxContext
     ) {
-        let sender = tx_context::sender(ctx);
-        assert!(sender == expense.payer, ENotExpensePayer);
-        assert!(!expense.settled, EExpenseAlreadySettled);
+        let debtor = tx_context::sender(ctx);
+        assert!(is_member(group, debtor), ENotGroupMember);
+        assert!(is_member(group, creditor), ENotGroupMember);
+        assert!(debtor != creditor, ESelfPayment);
         
-        // Distribute funds to each participant's balance
+        let amount = coin::value(&payment);
+        let debt_amount = get_debt_amount(group, debtor, creditor);
+        assert!(debt_amount > 0, EDebtNotFound);
+        
+        // Add payment to creditor's balance
+        let creditor_balance = table::borrow_mut(&mut group.member_balances, creditor);
+        balance::join(creditor_balance, coin::into_balance(payment));
+        
+        // Update debt
+        let remaining_debt = if (amount >= debt_amount) {
+            // Full payment or overpayment
+            clear_debt(group, debtor, creditor);
+            
+            // If overpayment, create reverse debt
+            if (amount > debt_amount) {
+                let overpayment = amount - debt_amount;
+                create_or_update_debt(group, creditor, debtor, overpayment, object::id_from_address(@0x0), ctx);
+                update_member_debit(group, creditor, overpayment, true);
+                update_member_credit(group, debtor, overpayment, true);
+            };
+            0
+        } else {
+            // Partial payment
+            update_debt_amount(group, debtor, creditor, debt_amount - amount);
+            debt_amount - amount
+        };
+        
+        // Update net balances
+        let payment_effect = if (amount > debt_amount) { debt_amount } else { amount };
+        update_member_debit(group, debtor, payment_effect, false);
+        update_member_credit(group, creditor, payment_effect, false);
+        
+        // Create settlement record
+        let settlement = Settlement {
+            id: object::new(ctx),
+            group_id: object::uid_to_inner(&group.id),
+            from: debtor,
+            to: creditor,
+            amount,
+            timestamp: tx_context::epoch(ctx),
+            note: b"Debt settlement",
+        };
+        
+        group.total_settlements = group.total_settlements + amount;
+        
+        // Emit event
+        event::emit(DebtPaid {
+            debtor,
+            creditor,
+            amount,
+        });
+        
+        transfer::share_object(settlement);
+    }
+
+    /// Simplify debts using debt simplification algorithm
+    public entry fun simplify_debts(
+        group: &mut Group,
+        _ctx: &mut TxContext
+    ) {
+        // This is a complex operation that would require significant computation
+        // For now, we'll implement a basic version that clears circular debts
+        
         let mut i = 0;
-        while (i < vector::length(&expense.participants)) {
-            let participant = *vector::borrow(&expense.participants, i);
-            if (participant != expense.payer) {
-                let share = *table::borrow(&expense.shares, participant);
+        while (i < vector::length(&group.members)) {
+            let member1 = *vector::borrow(&group.members, i);
+            let mut j = i + 1;
+            while (j < vector::length(&group.members)) {
+                let member2 = *vector::borrow(&group.members, j);
                 
-                // Get payer balance, take share, then get participant balance
-                let payer_balance = table::borrow_mut(&mut group.member_balances, expense.payer);
+                let debt1to2 = get_debt_amount(group, member1, member2);
+                let debt2to1 = get_debt_amount(group, member2, member1);
                 
-                // Check if payer has sufficient balance
-                assert!(balance::value(payer_balance) >= share, EInsufficientFunds);
+                if (debt1to2 > 0 && debt2to1 > 0) {
+                    // Cancel out mutual debts
+                    if (debt1to2 > debt2to1) {
+                        clear_debt(group, member2, member1);
+                        update_debt_amount(group, member1, member2, debt1to2 - debt2to1);
+                    } else if (debt2to1 > debt1to2) {
+                        clear_debt(group, member1, member2);
+                        update_debt_amount(group, member2, member1, debt2to1 - debt1to2);
+                    } else {
+                        // Equal debts, clear both
+                        clear_debt(group, member1, member2);
+                        clear_debt(group, member2, member1);
+                    };
+                };
                 
-                // Transfer share from payer to participant
-                let share_balance = balance::split(payer_balance, share);
-                
-                // Now get participant balance (after we're done with payer_balance)
-                let participant_balance = table::borrow_mut(&mut group.member_balances, participant);
-                balance::join(participant_balance, share_balance);
+                j = j + 1;
             };
             i = i + 1;
         };
-        
-        expense.settled = true;
     }
 
     /// Direct payment from one member to another
@@ -185,8 +341,27 @@ module payment_splitter::payment_splitter {
         assert!(is_member(group, sender), ENotGroupMember);
         assert!(is_member(group, recipient), ENotGroupMember);
         
+        let amount = coin::value(&payment);
         let recipient_balance = table::borrow_mut(&mut group.member_balances, recipient);
         balance::join(recipient_balance, coin::into_balance(payment));
+        
+        // Check if this payment is for an existing debt
+        let debt_amount = get_debt_amount(group, sender, recipient);
+        if (debt_amount > 0) {
+            // Apply payment to debt
+            if (amount >= debt_amount) {
+                clear_debt(group, sender, recipient);
+                if (amount > debt_amount) {
+                    // Overpayment creates reverse debt
+                    create_or_update_debt(group, recipient, sender, amount - debt_amount, object::id_from_address(@0x0), ctx);
+                };
+            } else {
+                update_debt_amount(group, sender, recipient, debt_amount - amount);
+            };
+        } else {
+            // No existing debt, create new debt from recipient to sender
+            create_or_update_debt(group, recipient, sender, amount, object::id_from_address(@0x0), ctx);
+        };
     }
 
     /// Withdraw funds from your balance in the group
@@ -221,6 +396,115 @@ module payment_splitter::payment_splitter {
         transfer::public_transfer(withdrawn, sender);
     }
 
+    // === Helper Functions ===
+
+    fun create_or_update_debt(
+        group: &mut Group,
+        debtor: address,
+        creditor: address,
+        amount: u64,
+        expense_id: ID,
+        _ctx: &mut TxContext
+    ) {
+        let debtor_table = table::borrow_mut(&mut group.debt_matrix, debtor);
+        
+        if (table::contains(debtor_table, creditor)) {
+            let current_debt = table::remove(debtor_table, creditor);
+            table::add(debtor_table, creditor, current_debt + amount);
+        } else {
+            table::add(debtor_table, creditor, amount);
+        };
+        
+        event::emit(DebtCreated {
+            debtor,
+            creditor,
+            amount,
+            expense_id,
+        });
+    }
+
+    fun update_debt_amount(
+        group: &mut Group,
+        debtor: address,
+        creditor: address,
+        new_amount: u64
+    ) {
+        let debtor_table = table::borrow_mut(&mut group.debt_matrix, debtor);
+        if (table::contains(debtor_table, creditor)) {
+            table::remove(debtor_table, creditor);
+            if (new_amount > 0) {
+                table::add(debtor_table, creditor, new_amount);
+            };
+        };
+    }
+
+    fun clear_debt(
+        group: &mut Group,
+        debtor: address,
+        creditor: address
+    ) {
+        let debtor_table = table::borrow_mut(&mut group.debt_matrix, debtor);
+        if (table::contains(debtor_table, creditor)) {
+            table::remove(debtor_table, creditor);
+        };
+    }
+
+    fun update_member_credit(
+        group: &mut Group,
+        member: address,
+        amount: u64,
+        increase: bool
+    ) {
+        let old_credit = *table::borrow(&group.member_credits, member);
+        let old_debit = *table::borrow(&group.member_debits, member);
+        
+        let new_credit = if (increase) {
+            old_credit + amount
+        } else {
+            if (old_credit >= amount) { old_credit - amount } else { 0 }
+        };
+        
+        table::remove(&mut group.member_credits, member);
+        table::add(&mut group.member_credits, member, new_credit);
+        
+        event::emit(NetBalanceUpdated {
+            group_id: object::uid_to_inner(&group.id),
+            member,
+            old_credit,
+            old_debit,
+            new_credit,
+            new_debit: old_debit,
+        });
+    }
+
+    fun update_member_debit(
+        group: &mut Group,
+        member: address,
+        amount: u64,
+        increase: bool
+    ) {
+        let old_credit = *table::borrow(&group.member_credits, member);
+        let old_debit = *table::borrow(&group.member_debits, member);
+        
+        let new_debit = if (increase) {
+            old_debit + amount
+        } else {
+            if (old_debit >= amount) { old_debit - amount } else { 0 }
+        };
+        
+        table::remove(&mut group.member_debits, member);
+        table::add(&mut group.member_debits, member, new_debit);
+        
+        event::emit(NetBalanceUpdated {
+            group_id: object::uid_to_inner(&group.id),
+            member,
+            old_credit,
+            old_debit,
+            new_credit: old_credit,
+            new_debit,
+        });
+    }
+
     // === View Functions ===
 
     /// Check if an address is a member of the group
@@ -235,6 +519,84 @@ module payment_splitter::payment_splitter {
         } else {
             0
         }
+    }
+
+    /// Get member's net balance (credit - debit)
+    public fun get_net_balance(group: &Group, member: address): (u64, u64, bool) {
+        let credit = if (table::contains(&group.member_credits, member)) {
+            *table::borrow(&group.member_credits, member)
+        } else {
+            0
+        };
+        
+        let debit = if (table::contains(&group.member_debits, member)) {
+            *table::borrow(&group.member_debits, member)
+        } else {
+            0
+        };
+        
+        if (credit >= debit) {
+            (credit - debit, 0, true) // positive balance (owed money)
+        } else {
+            (0, debit - credit, false) // negative balance (owes money)
+        }
+    }
+
+    /// Get debt amount between two members
+    public fun get_debt_amount(group: &Group, debtor: address, creditor: address): u64 {
+        if (table::contains(&group.debt_matrix, debtor)) {
+            let debtor_table = table::borrow(&group.debt_matrix, debtor);
+            if (table::contains(debtor_table, creditor)) {
+                *table::borrow(debtor_table, creditor)
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }
+
+    /// Get all debts for a member (returns list of creditors and amounts)
+    public fun get_member_debts(group: &Group, debtor: address): (vector<address>, vector<u64>) {
+        let mut creditors = vector::empty<address>();
+        let mut amounts = vector::empty<u64>();
+        
+        if (table::contains(&group.debt_matrix, debtor)) {
+            let debtor_table = table::borrow(&group.debt_matrix, debtor);
+            let mut i = 0;
+            while (i < vector::length(&group.members)) {
+                let creditor = *vector::borrow(&group.members, i);
+                if (table::contains(debtor_table, creditor)) {
+                    let amount = *table::borrow(debtor_table, creditor);
+                    if (amount > 0) {
+                        vector::push_back(&mut creditors, creditor);
+                        vector::push_back(&mut amounts, amount);
+                    };
+                };
+                i = i + 1;
+            };
+        };
+        
+        (creditors, amounts)
+    }
+
+    /// Get all credits for a member (who owes them money)
+    public fun get_member_credits(group: &Group, creditor: address): (vector<address>, vector<u64>) {
+        let mut debtors = vector::empty<address>();
+        let mut amounts = vector::empty<u64>();
+        
+        let mut i = 0;
+        while (i < vector::length(&group.members)) {
+            let debtor = *vector::borrow(&group.members, i);
+            let debt_amount = get_debt_amount(group, debtor, creditor);
+            if (debt_amount > 0) {
+                vector::push_back(&mut debtors, debtor);
+                vector::push_back(&mut amounts, debt_amount);
+            };
+            i = i + 1;
+        };
+        
+        (debtors, amounts)
     }
 
     /// Get group info
@@ -264,5 +626,26 @@ module payment_splitter::payment_splitter {
         } else {
             0
         }
+    }
+
+    /// Get settlement summary for the group
+    public fun get_settlement_summary(group: &Group): (u64, u64, u64) {
+        let mut total_debt = 0u64;
+        let mut active_debts = 0u64;
+        
+        let mut i = 0;
+        while (i < vector::length(&group.members)) {
+            let member = *vector::borrow(&group.members, i);
+            let (_, amounts) = get_member_debts(group, member);
+            let mut j = 0;
+            while (j < vector::length(&amounts)) {
+                total_debt = total_debt + *vector::borrow(&amounts, j);
+                active_debts = active_debts + 1;
+                j = j + 1;
+            };
+            i = i + 1;
+        };
+        
+        (group.total_expenses, total_debt, active_debts)
     }
 }
