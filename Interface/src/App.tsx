@@ -1,7 +1,6 @@
-
-
-import { WalletProvider } from '@suiet/wallet-kit';
+import { WalletProvider, useWallet } from '@suiet/wallet-kit';
 import '@suiet/wallet-kit/style.css';
+import { useEffect } from 'react';
 
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -15,12 +14,23 @@ import Application from "./pages/Application"
 
 const queryClient = new QueryClient();
 
+const WalletLogger = () => {
+  const { account } = useWallet();
+  useEffect(() => {
+    if (account?.address) {
+      console.log('Wallet connected. Address:', account.address);
+    }
+  }, [account?.address]);
+  return null;
+};
+
 const App = () => (
   <WalletProvider>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <WalletLogger />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
