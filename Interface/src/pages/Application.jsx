@@ -1,25 +1,48 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
+import axios from 'axios';
 
 const Application = () => {
   const [isModalOpen, setIsModalOpen] = useState(true);
   const [userName, setUserName] = useState("");
   const [isRegistered, setIsRegistered] = useState(false);
-  const navigate = useNavigate(); // Initialize navigate hook
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+  const { address: walletAddress, connected } = useWallet();
 
-  const handleRegister = () => {
-    if (userName.trim()) {
-      // Store user name in localStorage
-      localStorage.setItem('userName', userName.trim());
-      
+  const handleRegister = async () => {
+    if (!userName.trim()) {
+      setError("Please enter a valid name");
+      return;
+    }
+
+    if (!connected || !walletAddress) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    try {
+      // Send both name and wallet address to your backend
+      const response = await axios.post('/api/users', {
+        name: userName.trim(),
+        wallet_address: walletAddress
+      });
+
+      // Store user info in localStorage
+      localStorage.setItem('userName', response.data.name);
+      localStorage.setItem('walletAddress', response.data.wallet_address);
+      localStorage.setItem('userId', response.data.id);
+
       setIsRegistered(true);
       
-      // Redirect to /main page after showing success message
       setTimeout(() => {
         setIsModalOpen(false);
-        navigate('/Main'); // Navigate to main page
-      }, 1500); // Reduced timeout for better UX
+        navigate('/Main');
+      }, 1500);
+    } catch (error) {
+      console.error('Registration failed:', error);
+      setError(error.response?.data?.error?.message || 'Registration failed');
     }
   };
 
@@ -61,15 +84,27 @@ const Application = () => {
                     className="w-full px-4 py-3 border-3 border-black font-medium text-lg focus:outline-none focus:border-blue-600 transition-colors duration-200"
                   />
                 </div>
+                <div className="text-sm text-gray-600">
+      {connected ? (
+        <div className="p-2 bg-green-100 rounded">
+          Connected wallet: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+        </div>
+      ) : (
+        <div className="p-2 bg-red-100 rounded">
+          <ConnectButton className="w-full" />
+        </div>
+      )}
+    </div>
 
-                <button
-                  onClick={handleRegister}
-                  disabled={!userName.trim()}
-                  className="w-full bg-blue-600 text-white font-black text-lg py-3 px-6 border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:hover:translate-x-0 disabled:hover:translate-y-0"
-                >
-                  Register Now →
-                </button>
-              </div>
+    {error && <div className="text-red-500 text-sm">{error}</div>}
+    <button
+      onClick={handleRegister}
+      disabled={!userName.trim() || !connected}
+      className="w-full bg-blue-600 text-white font-black text-lg py-3 px-6 border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ..."
+    >
+      Register Now →
+    </button>
+  </div>
             ) : (
               <div className="text-center space-y-3 sm:space-y-4">
                 <div className="w-12 h-12 sm:w-16 sm:h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
