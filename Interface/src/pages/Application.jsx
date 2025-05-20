@@ -36,8 +36,8 @@ const Application = () => {
       
       {/* Registration Modal */}
       {isModalOpen && (
-        <div className="fixed w-40 inset-0 bg-white bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full p-8 transform transition-all duration-300">
+        <div className="<fixed inset-0 bg-white bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-md p-8 transform transition-all duration-300">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-black mb-2">Get Started</h2>
               <p className="text-gray-600 font-medium">

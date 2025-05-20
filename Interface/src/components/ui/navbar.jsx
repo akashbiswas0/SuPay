@@ -18,7 +18,7 @@ const Navbar = () => {
 
   return (
     <div>
-        <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${
+        <nav className={`fixed top-0 w-full z-50 mt-5 transition-all duration-300 ${
         isScrolled 
           ? 'bg-white/80 backdrop-blur-md border-b border-gray-200' 
           : 'bg-transparent'
@@ -26,16 +26,15 @@ const Navbar = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
-              <div className="text-2xl font-black text-blue-600">SuPay</div>
+              <div className="text-3xl font-black text-blue-600 -ml-16">SuPay</div>
             </div>
             
             {/* Desktop Navigation */}
             <div className="hidden md:block">
               <div className="ml-10 flex items-baseline space-x-8">
-                <a href="#home" className="text-black hover:text-blue-600 px-3 py-2 text-sm font-semibold transition-colors">Home</a>
-                <a href="#features" className="text-black hover:text-blue-600 px-3 py-2 text-sm font-semibold transition-colors">Features</a>
-                <a href="#about" className="text-black hover:text-blue-600 px-3 py-2 text-sm font-semibold transition-colors">About</a>
-                <a href="#contact" className="text-black hover:text-blue-600 px-3 py-2 text-sm font-semibold transition-colors">Contact</a>
+                <a href="#home" className="text-black hover:text-blue-600 px-3 py-2 text-lg font-semibold transition-colors">Home</a>
+                <a href="#features" className="text-black hover:text-blue-600 px-3 py-2 text-lg font-semibold transition-colors">Features</a>
+                <a href="#about" className="text-black hover:text-blue-600 px-3 py-2 text-lg font-semibold transition-colors">About</a>
               </div>
             </div>
 
@@ -65,7 +64,6 @@ const Navbar = () => {
               <a href="#home" className="block px-3 py-2 text-base font-semibold text-black hover:text-blue-600">Home</a>
               <a href="#features" className="block px-3 py-2 text-base font-semibold text-black hover:text-blue-600">Features</a>
               <a href="#about" className="block px-3 py-2 text-base font-semibold text-black hover:text-blue-600">About</a>
-              <a href="#contact" className="block px-3 py-2 text-base font-semibold text-black hover:text-blue-600">Contact</a>
               <div className="px-3 py-2">
                 <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 border-2 border-blue-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                   Connect Wallet
