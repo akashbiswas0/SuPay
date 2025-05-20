@@ -8,6 +8,7 @@ const userGroups = require('./routes/userGroups');
 const expenses = require('./routes/expenses');
 const expenseParticipants = require('./routes/expenseParticipants');
 const settlements = require('./routes/settlements');
+const friends = require('./routes/friends');
 
 const app = express();
 app.use(bodyParser.json());
@@ -17,5 +18,6 @@ app.use('/user_groups', userGroups);
 app.use('/expenses', expenses);
 app.use('/expense_participants', expenseParticipants);
 app.use('/settlements', settlements);
+app.use('/friends', friends);
 
 module.exports = app;

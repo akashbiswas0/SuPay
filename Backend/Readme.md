@@ -1,6 +1,6 @@
 # Supay Backend
 
-This is the backend for the Supay app, built with Express and Supabase. It provides CRUD APIs for users, groups, expenses, participants, and settlements.
+This is the backend for the Supay app, built with Express and Supabase. It provides CRUD APIs for users, groups, friends, expenses, participants, and settlements.
 
 ## Setup
 
@@ -22,6 +22,11 @@ This is the backend for the Supay app, built with Express and Supabase. It provi
 - `GET    /users/:wallet_address` — Get user by wallet address
 - `PUT    /users/:wallet_address` — Update user name
 - `DELETE /users/:wallet_address` — Delete user
+
+### Friends
+- `POST   /friends` — Add friend `{ user_id, friend_id }`
+- `GET    /friends/:user_id` — List friends for user
+- `DELETE /friends` — Remove friend `{ user_id, friend_id }`
 
 ### Groups
 - `POST   /groups` — Create group `{ id, name, owner_address }`
@@ -58,7 +63,7 @@ This is the backend for the Supay app, built with Express and Supabase. It provi
   ```sh
   npm test
   ```
-- Example test: `expenseParticipants.test.js` covers the `/expense_participants` endpoints.
+- Example tests: `tests/expenseParticipants.test.js`, `tests/userGroupExpense.test.js`, `tests/friends.test.js`
 
 ## Environment Variables
 
@@ -73,6 +78,7 @@ See `sample.env` for required variables:
 - `app.js` — Express app for testing
 - `routes/` — Route handlers for each resource
 - `db/supabase.js` — Supabase client setup
+- `tests/` — Automated tests
 
 ---
 
