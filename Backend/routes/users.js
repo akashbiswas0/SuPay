@@ -5,12 +5,42 @@ const supabase = require('../db/supabase');
 // Create user
 router.post('/', async (req, res) => {
   const { wallet_address, name } = req.body;
-  const { data, error } = await supabase
-    .from('users')
-    .insert([{ wallet_address, name }])
-    .select();
-  if (error) return res.status(400).json({ error });
-  res.json(data[0]);
+  
+  // Add validation
+  if (!wallet_address || !name) {
+    return res.status(400).json({ 
+      error: 'Both wallet address and name are required' 
+    });
+  }
+
+  try {
+    // Check if wallet already exists
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('*')
+      .eq('wallet_address', wallet_address)
+      .single();
+
+    if (existingUser) {
+      return res.status(409).json({ 
+        error: 'Wallet address already registered' 
+      });
+    }
+
+    // Create new user
+    const { data, error } = await supabase
+      .from('users')
+      .insert([{ wallet_address, name }])
+      .select();
+
+    if (error) throw error;
+    res.json(data[0]);
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ 
+      error: error.message || 'Internal server error' 
+    });
+  }
 });
 
 // Get user by wallet address
