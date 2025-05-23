@@ -72,6 +72,22 @@ export class ApiService {
     return response.json();
   }
 
+  static async getUserById(uuid: string): Promise<User | null> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/by-id/${uuid}`);
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error('Failed to fetch user by id');
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching user by id:', error);
+      return null;
+    }
+  }
+
   // Group APIs
   static async createGroup(groupId: string, name: string, ownerAddress: string): Promise<Group> {
     const response = await fetch(`${API_BASE_URL}/groups`, {

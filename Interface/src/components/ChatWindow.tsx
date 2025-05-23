@@ -38,25 +38,47 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
         let group = null;
         if (walletAddress) {
           const groups = await ApiService.getUserGroups(walletAddress);
+          console.log('Fetched groups for wallet', walletAddress, groups); // LOG
           group = groups.find((g: any) => g.name === friendName);
+          console.log('Matched group by name', friendName, group); // LOG
         }
         if (!group) {
+          console.log('No group found for name', friendName); // LOG
           setGroupMembers([]);
           setLoadingMembers(false);
           return;
         }
         // 2. Get members from backend
-        const res = await fetch(`http://localhost:3000/userGroups/${group.id}`);
+        const groupMembersUrl = `http://localhost:3000/user_groups/group/${group.id}`;
+        console.log('Fetching group members from', groupMembersUrl); // LOG
+        const res = await fetch(groupMembersUrl);
         const userGroups = await res.json();
+        console.log('Fetched userGroups for group.id', group.id, userGroups); // LOG
+        if (!Array.isArray(userGroups)) {
+          console.error('userGroups is not an array:', userGroups);
+        }
         // 3. For each member, get user info and balance (mock balance for now)
-        const members = await Promise.all(userGroups.map(async (ug: any) => {
-          const user = await ApiService.getUserByWallet(ug.user_id ? ug.user_id : ug);
-          return {
-            name: user?.name || ug.user_id || ug,
-            wallet: user?.wallet_address || ug.user_id || ug,
-            balance: 0 // TODO: Replace with real balance from contract
-          };
+        const members = await Promise.all(userGroups.map(async (ug: any, idx: number) => {
+          console.log('Processing userGroup entry', idx, ug);
+          try {
+            // Use ApiService.getUserById to fetch user details by UUID
+            const user = await ApiService.getUserById(ug.user_id);
+            console.log('Fetched user for member', ug, user); // LOG
+            return {
+              name: user?.name || ug.user_id,
+              wallet: user?.wallet_address || ug.user_id,
+              balance: 0 // TODO: Replace with real balance from contract
+            };
+          } catch (err) {
+            console.error('Error fetching user for member', ug, err);
+            return {
+              name: ug.user_id || 'Unknown',
+              wallet: ug.user_id || 'Unknown',
+              balance: 0
+            };
+          }
         }));
+        console.log('Final group members array:', members);
         setGroupMembers(members);
         setLoadingMembers(false);
       })();
@@ -129,6 +151,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
                     <span className="font-mono">Balance: {member.balance} SUI</span>
                   </li>
                 ))}
+                
               </ul>
             )}
           </div>
