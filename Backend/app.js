@@ -1,5 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const cors = require('cors');
 
 // Import routes
 const users = require('./routes/users');
@@ -11,6 +12,7 @@ const settlements = require('./routes/settlements');
 const friends = require('./routes/friends');
 
 const app = express();
+app.use(cors());
 app.use(bodyParser.json());
 app.use('/users', users);
 app.use('/groups', groups);

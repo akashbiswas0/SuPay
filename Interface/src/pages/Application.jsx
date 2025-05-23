@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
 import axios from 'axios';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+
 const Application = () => {
   const [isModalOpen, setIsModalOpen] = useState(true);
   const [userName, setUserName] = useState("");
@@ -24,7 +26,7 @@ const Application = () => {
 
     try {
       // Send both name and wallet address to your backend
-      const response = await axios.post('/api/users', {
+      const response = await axios.post(`${BACKEND_URL}/users`, {
         name: userName.trim(),
         wallet_address: walletAddress
       });

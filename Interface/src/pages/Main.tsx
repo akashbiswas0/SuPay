@@ -6,11 +6,12 @@ import FriendsList from '@/components/FriendsList';
 import ChatWindow from '@/components/ChatWindow';
 import CreateGroupModal from '@/components/CreateGroupModal';
 import Navbar from "../components/ui/Navbar";
+import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 
 const GROUP_PACKAGE_ID = '0x588c00f96eff4b853c832605083ff60386d6f95f83af05ad48d6875896d49dcb';
 
 const Main = () => {
-  const { signAndExecuteTransactionBlock } = useWallet();
+  const { signAndExecuteTransactionBlock, account } = useWallet();
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [isGroup, setIsGroup] = useState(false);
@@ -24,29 +25,18 @@ const Main = () => {
   const handleCreateGroup = async (groupName: string) => {
     try {
       setGroupError(null);
-      
+      const suiClient = new SuiClient({ url: getFullnodeUrl('testnet') });
+      if (!account?.address) throw new Error('Wallet not connected');
+
       const txb = new TransactionBlock();
-      
-      // Your Move function expects vector<u8> - let's try the most direct approach
       const nameBytes = Array.from(new TextEncoder().encode(groupName));
-      
-      console.log('Group name:', groupName);
-      console.log('Name bytes:', nameBytes);
-      console.log('Package ID:', GROUP_PACKAGE_ID);
-      console.log('Target function:', `${GROUP_PACKAGE_ID}::payment_splitter::create_group`);
-      
       txb.moveCall({
         target: `${GROUP_PACKAGE_ID}::payment_splitter::create_group`,
-        arguments: [
-          txb.pure(nameBytes, 'vector<u8>'),
-        ],
+        arguments: [txb.pure(nameBytes, 'vector<u8>')],
       });
-
-
-
-      // Set gas budget
       txb.setGasBudget(20000000); // 0.02 SUI - increased for safety
 
+      // 1. Run the transaction
       const result = await signAndExecuteTransactionBlock({
         transactionBlock: txb,
         options: {
@@ -57,105 +47,183 @@ const Main = () => {
           showRawInput: true,
         },
       });
-
       console.log('Full transaction result:', JSON.stringify(result, null, 2));
-      console.log('Object changes:', result.objectChanges);
-      console.log('Events:', result.events);
-      console.log('Effects:', result.effects);
 
-      let groupId = null;
+      // 3. Extract group ID from transaction result
+      let groupId: string | null = null;
 
-      // Method 1: Look for created objects in objectChanges
-      if (result.objectChanges && result.objectChanges.length > 0) {
-        console.log('Checking object changes...');
-        result.objectChanges.forEach((change, index) => {
-          console.log(`Change ${index}:`, change);
+      // ========================================
+      // PRIMARY METHOD: Query transaction by digest to get shared objects
+      // ========================================
+      try {
+        const suiClient = new SuiClient({ url: getFullnodeUrl('testnet') });
+        console.log("🔍 Querying transaction by digest:", result.digest);
+        
+        const transactionDetails = await suiClient.getTransactionBlock({
+          digest: result.digest,
+          options: {
+            showEffects: true,
+            showObjectChanges: true,
+            showEvents: true,
+            showInput: true,
+            showRawInput: false,
+          },
         });
+        
+        console.log("Full transaction details:", transactionDetails);
 
-        const createdObject = result.objectChanges.find(
-          (change) => 
-            change.type === 'created' &&
-            (change.objectType?.includes('Group') || 
-             change.objectType?.includes('group'))
-        );
-
-        if (createdObject && 'objectId' in createdObject) {
-          groupId = createdObject.objectId;
-          console.log('Found created group ID from objectChanges:', groupId);
-        }
-      }
-
-      // Method 2: Look in events
-      if (!groupId && result.events && result.events.length > 0) {
-        console.log('Checking events...');
-        result.events.forEach((event, index) => {
-          console.log(`Event ${index}:`, event);
-        });
-
-        const groupEvent = result.events.find(
-          (event) => 
-            event.type?.includes('Group') || 
-            event.type?.includes('group') ||
-            event.parsedJson?.group_id
-        );
-
-        if (groupEvent) {
-          console.log('Found group event:', groupEvent);
-          // Extract group ID from event if available
-          if (groupEvent.parsedJson?.group_id) {
-            groupId = groupEvent.parsedJson.group_id;
-          } else if (groupEvent.parsedJson?.id) {
-            groupId = groupEvent.parsedJson.id;
+        // Check for created objects in the full transaction details
+        if (transactionDetails.objectChanges) {
+          const createdObjects = transactionDetails.objectChanges.filter(
+            (change: any) => change.type === "created"
+          );
+          console.log("✅ Created objects from full transaction:", createdObjects);
+          
+          if (createdObjects.length > 0) {
+            // Look for the group object (might be a shared object)
+            for (const obj of createdObjects) {
+              console.log("Created object:", obj);
+              const objectChange = obj as any;
+              // Check if this is our group object
+              if (objectChange.objectType && (objectChange.objectType.includes("Group") || objectChange.objectType.includes("payment_splitter"))) {
+                groupId = objectChange.objectId;
+                console.log("🎉 Found Group object from transaction details:", groupId);
+                break;
+              }
+            }
+            
+            // If no Group type found, use the first created object
+            if (!groupId && (createdObjects[0] as any).objectId) {
+              groupId = (createdObjects[0] as any).objectId;
+              console.log("🎉 Using first created object as group ID:", groupId);
+            }
           }
         }
+
+        // Check effects.created for shared objects
+        if (!groupId && transactionDetails.effects?.created) {
+          console.log("✅ Checking effects.created:", transactionDetails.effects.created);
+          
+          for (const created of transactionDetails.effects.created) {
+            console.log("Created object from effects:", created);
+            if ((created as any).reference?.objectId) {
+              groupId = (created as any).reference.objectId;
+              console.log("🎉 Found object ID from effects.created:", groupId);
+              break;
+            } else if ((created as any).objectId) {
+              groupId = (created as any).objectId;
+              console.log("🎉 Found object ID from effects.created:", groupId);
+              break;
+            }
+          }
+        }
+
+        // Check events for group creation
+        if (!groupId && transactionDetails.events) {
+          console.log("✅ Checking events for group creation:", transactionDetails.events);
+          
+          for (const event of transactionDetails.events) {
+            console.log("Event:", event);
+            if (event.parsedJson && typeof event.parsedJson === 'object') {
+              const eventData = event.parsedJson as Record<string, any>;
+              if (eventData.group_id || eventData.id || eventData.object_id) {
+                groupId = eventData.group_id || eventData.id || eventData.object_id;
+                console.log("🎉 Found group ID from events:", groupId);
+                break;
+              }
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error("❌ Error querying transaction details:", error);
       }
 
-      // Method 3: Look in transaction effects for created objects
-      if (!groupId && result.effects?.created && result.effects.created.length > 0) {
-        console.log('Checking transaction effects created objects...');
-        result.effects.created.forEach((created, index) => {
-          console.log(`Created object ${index}:`, created);
-        });
-
-        const createdGroup = result.effects.created.find(
-          (created) => 
-            created.reference?.objectId && (
-              created.reference.objectType?.includes('Group') ||
-              created.reference.objectType?.includes('group')
-            )
-        );
-
-        if (createdGroup?.reference?.objectId) {
-          groupId = createdGroup.reference.objectId;
-          console.log('Found created group ID from effects:', groupId);
+      // ========================================
+      // FALLBACK METHODS (from wallet response)
+      // ========================================
+      
+      // Method 1: Check objectChanges for created objects
+      if (!groupId) {
+        console.log('🔍 Fallback Method 1: Checking wallet objectChanges...');
+        if (result.objectChanges && result.objectChanges.length > 0) {
+          console.log('ObjectChanges found:', result.objectChanges);
+          const createdObjects = result.objectChanges.filter((change: any) => change.type === 'created');
+          console.log('Created objects:', createdObjects);
+          
+          if (createdObjects.length > 0) {
+            // Look for the Group object (should be the shared object)
+            const groupObject = createdObjects.find((obj: any) => 
+              obj.objectType?.includes('Group') || obj.objectType?.includes('payment_splitter')
+            );
+            
+            if (groupObject) {
+              groupId = (groupObject as any).objectId;
+              console.log('✅ Found group ID from objectChanges:', groupId);
+            } else if (createdObjects.length === 1) {
+              // If only one object was created, it's likely our group
+              groupId = (createdObjects[0] as any).objectId;
+              console.log('✅ Found group ID (single created object):', groupId);
+            }
+          }
+        } else {
+          console.log('❌ No objectChanges found');
         }
       }
 
-      // Method 4: If still not found, just take the first created object
-      if (!groupId && result.objectChanges && result.objectChanges.length > 0) {
-        const firstCreated = result.objectChanges.find(change => change.type === 'created');
-        if (firstCreated && 'objectId' in firstCreated) {
-          groupId = firstCreated.objectId;
-          console.log('Using first created object as group ID:', groupId);
+      // Method 2: Check effects.created if objectChanges didn't work
+      if (!groupId && result.effects?.created) {
+        console.log('🔍 Fallback Method 2: Checking wallet effects.created...');
+        console.log('Effects.created:', result.effects.created);
+        
+        if (result.effects.created.length > 0) {
+          // Take the first created object (should be our group)
+          const createdRef = result.effects.created[0];
+          groupId = (createdRef as any).reference?.objectId || (createdRef as any).objectId;
+          console.log('✅ Found group ID from effects.created:', groupId);
+        } else {
+          console.log('❌ No created objects in effects');
         }
       }
 
+      // Method 3: Check events for group creation
+      if (!groupId && result.events) {
+        console.log('🔍 Fallback Method 3: Checking wallet events...');
+        console.log('Events:', result.events);
+        
+        // Look for events that might contain the group ID
+        for (const event of result.events) {
+          if (event.type?.includes('payment_splitter') || event.type?.includes('Group')) {
+            console.log('Found relevant event:', event);
+            // Try to extract object ID from event data
+            if (event.parsedJson && typeof event.parsedJson === 'object') {
+              const eventData = event.parsedJson as any;
+              if (eventData.group_id) {
+                groupId = eventData.group_id;
+                console.log('✅ Found group ID from event:', groupId);
+                break;
+              }
+            }
+          }
+        }
+        
+        if (!groupId) {
+          console.log('❌ No group ID found in events');
+        }
+      }
+
+      // Final result
       if (groupId) {
-        console.log('Successfully created group with ID:', groupId);
+        console.log('🎉 Successfully extracted group ID:', groupId);
       } else {
-        console.log('Group creation transaction succeeded, but could not locate group ID');
-        // Don't throw error, just proceed - the group was likely created successfully
+        console.log('⚠️ Group creation transaction succeeded, but could not extract group ID');
+        console.log('Transaction was successful - group exists but ID extraction failed');
       }
-
       setIsGroupModalOpen(false);
       handleFriendSelect(groupName, true);
-      
     } catch (error) {
       console.error('Group creation failed:', error);
-      
-      // More detailed error handling
       let errorMessage = 'Failed to create group';
-      
       if (error instanceof Error) {
         if (error.message.includes('VMVerificationOrDeserializationError')) {
           errorMessage = 'Invalid transaction parameters. Please check the smart contract function signature.';
@@ -165,7 +233,6 @@ const Main = () => {
           errorMessage = error.message;
         }
       }
-      
       setGroupError(errorMessage);
       throw error;
     }
