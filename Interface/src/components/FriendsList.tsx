@@ -65,15 +65,21 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
   }, [selectedFriend, contacts]);
 
   return (
-    <div className="w-72 border-r-4 border-black flex flex-col h-full bg-white">
+    <div className="w-96 border-r-4 border-black flex flex-col h-full bg-white">
       <div className="flex items-center justify-between p-4 border-b-4 border-black">
-        <h2 className="text-2xl font-bold">My Groups</h2>
+        <h2 className="text-2xl font-bold">Hommies</h2>
         <Button 
           variant="secondary" 
-          className="border-4 border-black p-0 h-10 w-10 hover:bg-blue-100 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
-          onClick={onCreateGroup}
+          className="border-4 ml-10 border-black p-0 h-10 w-10 hover:bg-blue-100 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
         >
           <Plus className="h-5 w-5" />
+        </Button>
+        <Button 
+          variant="secondary" 
+          className="border-4 border-black font-bold px-16 h-10 w-10 hover:bg-blue-200 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+          onClick={onCreateGroup}
+        >
+          Create Group
         </Button>
       </div>
 

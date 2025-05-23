@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Plus } from 'lucide-react';
+
 
 interface ChatWindowProps {
   friendName: string;
@@ -72,9 +74,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
 
   return (
     <div className="flex-1 flex flex-col h-full border-l border-gray-200 bg-white">
-      <div className="border-b-4 border-black p-5">
+        
+        <div className="border-b-4 border-black p-4 flex items-center justify-between">
         <h2 className="text-xl font-bold">{friendName}</h2>
-      </div>
+
+  
+  <Button 
+    variant="secondary" 
+    className="border-4 border-black px-16 font-bold h-10 w-10 hover:bg-blue-100 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+  >
+    Add Hommies
+  </Button>
+</div>
+
 
       <div className="flex-1 p-4 overflow-y-auto">
         {messages.map((msg) => (
@@ -101,14 +113,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
       <div className="p-4 fixed bottom-0 w-3/4 border-t-4 bg-slate-200 pr-10 border-black">
         <div className="flex gap-2 mb-4">
           <Button 
-            className="w-6xl border-4 border-black bg-blue-600 hover:bg-blue-700 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+            className="w-6xl border-4 border-black bg-blue-600 font-bold hover:bg-blue-700 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
             
           >
             Pay
           </Button>
           <Button 
             variant="outline" 
-            className="w-7xl border-4 border-black bg-white hover:bg-gray-100 hover:bg-green-400 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+            className="w-7xl border-4 border-black font-bold bg-white hover:bg-gray-100 hover:bg-green-400 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
             
           >
             Request
@@ -120,11 +132,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
             placeholder="Send message..." 
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className="border-4 border-black"
+            className="border-4 border-black font-semibold"
           />
           <Button 
             type="submit"
-            className="border-4 border-black bg-blue-600 hover:bg-blue-700 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+            className="border-4 border-black bg-blue-600 hover:bg-blue-700 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all px-10 font-bold py-2"
           >
             Send
           </Button>
