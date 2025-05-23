@@ -32,9 +32,7 @@ const Navbar = () => {
             {/* Desktop Navigation */}
             <div className="hidden md:block">
               <div className="ml-10 flex items-baseline space-x-8">
-                <a href="#home" className="text-black hover:text-blue-600 px-3 py-2 text-lg font-semibold transition-colors">Home</a>
-                <a href="#features" className="text-black hover:text-blue-600 px-3 py-2 text-lg font-semibold transition-colors">Features</a>
-                <a href="#about" className="text-black hover:text-blue-600 px-3 py-2 text-lg font-semibold transition-colors">About</a>
+
               </div>
             </div>
 
@@ -61,9 +59,7 @@ const Navbar = () => {
         {isMenuOpen && (
           <div className="md:hidden bg-white/95 backdrop-blur-md border-b border-gray-200">
             <div className="px-2 pt-2 pb-3 space-y-1">
-              <a href="#home" className="block px-3 py-2 text-base font-semibold text-black hover:text-blue-600">Home</a>
-              <a href="#features" className="block px-3 py-2 text-base font-semibold text-black hover:text-blue-600">Features</a>
-              <a href="#about" className="block px-3 py-2 text-base font-semibold text-black hover:text-blue-600">About</a>
+              
               <div className="px-3 py-2">
                 <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 border-2 border-blue-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                   Connect Wallet

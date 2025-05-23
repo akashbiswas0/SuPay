@@ -227,11 +227,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
             placeholder="Send message..." 
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className="border-4 border-black"
+            className="border-4 border-black font-semibold"
           />
           <Button 
             type="submit"
-            className="border-4 border-black bg-blue-600 hover:bg-blue-700 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+            className="border-4 border-black bg-blue-600 hover:bg-blue-700 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all px-10 font-bold py-2"
           >
             Send
           </Button>
