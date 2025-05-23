@@ -142,11 +142,11 @@ module payment_splitter::payment_splitter {
         table::add(&mut group.debt_matrix, new_member, table::new(ctx));
     }
 
-    /// Create and pay for an expense with automatic debt tracking
+    /// Create an expense with automatic debt tracking (no upfront payment required)
     public entry fun create_expense(
         group: &mut Group,
         description: vector<u8>,
-        payment: Coin<SUI>,
+        amount: u64,
         participants: vector<address>,
         ctx: &mut TxContext
     ) {
@@ -160,7 +160,6 @@ module payment_splitter::payment_splitter {
             i = i + 1;
         };
         
-        let amount = coin::value(&payment);
         let share_per_person = amount / vector::length(&participants);
         
         // Create expense
@@ -203,10 +202,6 @@ module payment_splitter::payment_splitter {
             
             i = i + 1;
         };
-        
-        // Add payment to payer's balance
-        let payer_balance = table::borrow_mut(&mut group.member_balances, sender);
-        balance::join(payer_balance, coin::into_balance(payment));
         
         // Update group
         vector::push_back(&mut group.expenses, expense_id_copy);
@@ -329,7 +324,7 @@ module payment_splitter::payment_splitter {
         };
     }
 
-    /// Direct payment from one member to another
+    /// Direct payment from one member to another with proper debt clearing
     public entry fun pay_member(
         group: &mut Group,
         recipient: address,
@@ -342,25 +337,62 @@ module payment_splitter::payment_splitter {
         assert!(is_member(group, recipient), ENotGroupMember);
         
         let amount = coin::value(&payment);
-        let recipient_balance = table::borrow_mut(&mut group.member_balances, recipient);
-        balance::join(recipient_balance, coin::into_balance(payment));
+        
+        // Transfer the payment directly to the recipient
+        transfer::public_transfer(payment, recipient);
         
         // Check if this payment is for an existing debt
         let debt_amount = get_debt_amount(group, sender, recipient);
         if (debt_amount > 0) {
             // Apply payment to debt
-            if (amount >= debt_amount) {
+            let payment_to_debt = if (amount >= debt_amount) {
+                // Full payment or overpayment
                 clear_debt(group, sender, recipient);
+                update_member_debit(group, sender, debt_amount, false);
+                update_member_credit(group, recipient, debt_amount, false);
+                
                 if (amount > debt_amount) {
                     // Overpayment creates reverse debt
-                    create_or_update_debt(group, recipient, sender, amount - debt_amount, object::id_from_address(@0x0), ctx);
+                    let overpayment = amount - debt_amount;
+                    create_or_update_debt(group, recipient, sender, overpayment, object::id_from_address(@0x0), ctx);
+                    update_member_debit(group, recipient, overpayment, true);
+                    update_member_credit(group, sender, overpayment, true);
                 };
+                debt_amount
             } else {
+                // Partial payment
                 update_debt_amount(group, sender, recipient, debt_amount - amount);
+                update_member_debit(group, sender, amount, false);
+                update_member_credit(group, recipient, amount, false);
+                amount
             };
+            
+            // Create settlement record
+            let settlement = Settlement {
+                id: object::new(ctx),
+                group_id: object::uid_to_inner(&group.id),
+                from: sender,
+                to: recipient,
+                amount: payment_to_debt,
+                timestamp: tx_context::epoch(ctx),
+                note: b"Debt settlement via pay_member",
+            };
+            
+            group.total_settlements = group.total_settlements + payment_to_debt;
+            
+            // Emit debt paid event
+            event::emit(DebtPaid {
+                debtor: sender,
+                creditor: recipient,
+                amount: payment_to_debt,
+            });
+            
+            transfer::share_object(settlement);
         } else {
             // No existing debt, create new debt from recipient to sender
             create_or_update_debt(group, recipient, sender, amount, object::id_from_address(@0x0), ctx);
+            update_member_debit(group, recipient, amount, true);
+            update_member_credit(group, sender, amount, true);
         };
     }
 
