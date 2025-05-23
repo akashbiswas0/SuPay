@@ -127,6 +127,43 @@ export class ApiService {
       return [];
     }
   }
+
+  // Add members to group
+  static async addMembersToGroup(groupId: string, memberWallets: string[]): Promise<any> {
+    // For each wallet, get user_id, then add to user_groups
+    const results = [];
+    for (const wallet of memberWallets) {
+      console.log(`[ApiService] Attempting to add member to group in DB:`, { groupId, wallet });
+      // Get user by wallet address
+      const user = await this.getUserByWallet(wallet);
+      if (!user) {
+        console.error(`[ApiService] User not found for wallet: ${wallet}`);
+        results.push({ wallet, error: 'User not found' });
+        continue;
+      }
+      // Add to user_groups
+      try {
+        const response = await fetch(`${API_BASE_URL}/user_groups`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id, group_id: groupId })
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          console.error(`[ApiService] Failed to add to group in DB:`, { wallet, error });
+          results.push({ wallet, error: error.error || 'Failed to add to group' });
+        } else {
+          const data = await response.json();
+          console.log(`[ApiService] Successfully added to group in DB:`, { wallet, data });
+          results.push({ wallet, success: true });
+        }
+      } catch (err) {
+        console.error(`[ApiService] Exception adding to group in DB:`, { wallet, err });
+        results.push({ wallet, error: err instanceof Error ? err.message : 'Unknown error' });
+      }
+    }
+    return results;
+  }
 }
 
 // Local storage utilities

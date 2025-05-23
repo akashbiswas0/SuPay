@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ApiService } from '@/services/api';
 
 interface ChatWindowProps {
   friendName: string;
@@ -18,12 +19,51 @@ interface Message {
 const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
-  
+  const [groupMembers, setGroupMembers] = useState<{name: string, wallet: string, balance: number}[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
   // When the selected friend/group changes, reset messages
   useEffect(() => {
     // In a real app, we would fetch conversation history here
     setMessages([]);
   }, [friendName]);
+
+  useEffect(() => {
+    if (isGroup) {
+      setLoadingMembers(true);
+      // Fetch group info by name, then fetch members and their balances
+      (async () => {
+        // 1. Get group by name
+        const walletAddress = localStorage.getItem('supay_wallet');
+        let group = null;
+        if (walletAddress) {
+          const groups = await ApiService.getUserGroups(walletAddress);
+          group = groups.find((g: any) => g.name === friendName);
+        }
+        if (!group) {
+          setGroupMembers([]);
+          setLoadingMembers(false);
+          return;
+        }
+        // 2. Get members from backend
+        const res = await fetch(`http://localhost:3000/userGroups/${group.id}`);
+        const userGroups = await res.json();
+        // 3. For each member, get user info and balance (mock balance for now)
+        const members = await Promise.all(userGroups.map(async (ug: any) => {
+          const user = await ApiService.getUserByWallet(ug.user_id ? ug.user_id : ug);
+          return {
+            name: user?.name || ug.user_id || ug,
+            wallet: user?.wallet_address || ug.user_id || ug,
+            balance: 0 // TODO: Replace with real balance from contract
+          };
+        }));
+        setGroupMembers(members);
+        setLoadingMembers(false);
+      })();
+    } else {
+      setGroupMembers([]);
+    }
+  }, [friendName, isGroup]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +114,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
     <div className="flex-1 flex flex-col h-full border-l border-gray-200 bg-white">
       <div className="border-b-4 border-black p-5">
         <h2 className="text-xl font-bold">{friendName}</h2>
+        {isGroup && (
+          <div className="mt-2">
+            <h3 className="font-semibold mb-1">Members</h3>
+            {loadingMembers ? (
+              <div className="text-gray-500 text-sm">Loading members...</div>
+            ) : groupMembers.length === 0 ? (
+              <div className="text-gray-500 text-sm">No members found.</div>
+            ) : (
+              <ul className="space-y-1">
+                {groupMembers.map((member) => (
+                  <li key={member.wallet} className="flex justify-between text-sm">
+                    <span>{member.name} <span className="text-gray-400">({member.wallet})</span></span>
+                    <span className="font-mono">Balance: {member.balance} SUI</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 p-4 overflow-y-auto">

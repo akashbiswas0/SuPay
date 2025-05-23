@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import FriendsList from '@/components/FriendsList';
 import ChatWindow from '@/components/ChatWindow';
 import CreateGroupModal from '@/components/CreateGroupModal';
+import AddGroupMembersModal from '@/components/AddGroupMembersModal';
 import Navbar from "../components/ui/Navbar";
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import { ApiService, LocalStorageService } from '@/services/api';
@@ -16,8 +17,11 @@ const Main = () => {
   const { signAndExecuteTransactionBlock, account } = useWallet();
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [isAddMembersModalOpen, setIsAddMembersModalOpen] = useState(false);
   const [isGroup, setIsGroup] = useState(false);
   const [groupError, setGroupError] = useState<string | null>(null);
+  const [newGroupId, setNewGroupId] = useState<string | null>(null);
+  const [addMembersError, setAddMembersError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   // Check if user is authenticated
@@ -63,7 +67,7 @@ const Main = () => {
 
       // 1. Run the transaction
       const result = await signAndExecuteTransactionBlock({
-        transactionBlock: txb,
+        transactionBlock: txb as any,
         options: {
           showEvents: true,
           showObjectChanges: true,
@@ -245,6 +249,8 @@ const Main = () => {
         try {
           const savedGroup = await ApiService.createGroup(groupId, groupName, account.address);
           console.log('✅ Group saved to database:', savedGroup);
+          setNewGroupId(groupId);
+          setIsAddMembersModalOpen(true);
         } catch (error) {
           console.error('❌ Failed to save group to database:', error);
         }
@@ -268,6 +274,60 @@ const Main = () => {
       }
       setGroupError(errorMessage);
       throw error;
+    }
+  };
+
+  const handleAddMembers = async (members: string[]) => {
+    setAddMembersError(null);
+    if (!newGroupId) return;
+    if (!account?.address) {
+      setAddMembersError('Wallet not connected');
+      return;
+    }
+    console.log('[AddMembers] Starting add members flow:', members);
+    const suiClient = new SuiClient({ url: getFullnodeUrl('testnet') });
+    const failed: string[] = [];
+    for (const member of members) {
+      try {
+        // On-chain transaction to add member
+        const txb = new TransactionBlock();
+        txb.moveCall({
+          target: `${GROUP_PACKAGE_ID}::payment_splitter::add_member`,
+          arguments: [
+            txb.object(newGroupId),
+            txb.pure(member, 'address')
+          ],
+        });
+        txb.setGasBudget(10000000);
+        console.log(`[AddMembers] Sending on-chain add_member for: ${member}`);
+        const txResult = await signAndExecuteTransactionBlock({
+          transactionBlock: txb as any,
+          options: { showEffects: true },
+        });
+        console.log(`[AddMembers] On-chain add_member success for: ${member}`, txResult);
+      } catch (err) {
+        console.error('[AddMembers] Failed to add member on-chain:', member, err);
+        failed.push(member);
+        continue;
+      }
+    }
+    if (failed.length > 0) {
+      setAddMembersError('Failed to add on-chain: ' + failed.join(', '));
+      console.log('[AddMembers] Aborting DB add due to on-chain failures:', failed);
+      return;
+    }
+    // Save to DB
+    console.log('[AddMembers] All on-chain adds succeeded, proceeding to DB add:', members);
+    const results = await ApiService.addMembersToGroup(newGroupId, members);
+    console.log('[AddMembers] DB addMembersToGroup results:', results);
+    const failedDb = results.filter((r: any) => r.error);
+    if (failedDb.length > 0) {
+      setAddMembersError('Some members could not be saved to DB: ' + failedDb.map((f: any) => `${f.wallet}: ${f.error}`).join(', '));
+      console.error('[AddMembers] DB add failures:', failedDb);
+    } else {
+      setIsAddMembersModalOpen(false);
+      setNewGroupId(null);
+      console.log('[AddMembers] All members added successfully (on-chain and DB)');
     }
   };
 
@@ -307,6 +367,17 @@ const Main = () => {
         }}
         onCreateGroup={handleCreateGroup}
         error={groupError}
+      />
+      
+      <AddGroupMembersModal
+        isOpen={isAddMembersModalOpen}
+        onClose={() => {
+          setIsAddMembersModalOpen(false);
+          setNewGroupId(null);
+          setAddMembersError(null);
+        }}
+        onAddMembers={handleAddMembers}
+        error={addMembersError}
       />
     </div>
   );
