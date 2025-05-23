@@ -14,6 +14,32 @@ export interface Group {
   created_at: string;
 }
 
+export interface Expense {
+  id: string;
+  group_id: string;
+  description: string;
+  payer_address: string;
+  amount: number;
+  created_at: string;
+}
+
+export interface Settlement {
+  id: string;
+  group_id: string;
+  from_address: string;
+  to_address: string;
+  amount: number;
+  note?: string;
+  created_at: string;
+}
+
+export interface ExpenseParticipant {
+  id: number;
+  expense_id: string;
+  participant_address: string;
+  share_amount: number;
+}
+
 export class ApiService {
   // User APIs
   static async createUser(walletAddress: string, name: string): Promise<User> {
@@ -179,6 +205,99 @@ export class ApiService {
       }
     }
     return results;
+  }
+
+  // Expense APIs
+  static async createExpense(expense: Omit<Expense, 'created_at'>): Promise<Expense> {
+    const response = await fetch(`${API_BASE_URL}/expenses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(expense),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create expense');
+    }
+
+    return response.json();
+  }
+
+  static async getGroupExpenses(groupId: string): Promise<Expense[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/expenses/group/${groupId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch group expenses');
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching group expenses:', error);
+      return [];
+    }
+  }
+
+  static async addExpenseParticipants(expenseId: string, participants: Array<{participant_address: string, share_amount: number}>): Promise<any> {
+    const results = [];
+    for (const participant of participants) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/expense_participants`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            expense_id: expenseId,
+            participant_address: participant.participant_address,
+            share: participant.share_amount // Backend expects 'share' not 'share_amount'
+          })
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          results.push({ participant, error: error.error || 'Failed to add participant' });
+        } else {
+          const data = await response.json();
+          results.push({ participant, success: true, data });
+        }
+      } catch (err) {
+        results.push({ participant, error: err instanceof Error ? err.message : 'Unknown error' });
+      }
+    }
+    return results;
+  }
+
+  // Settlement APIs
+  static async createSettlement(settlement: Omit<Settlement, 'created_at'>): Promise<Settlement> {
+    const response = await fetch(`${API_BASE_URL}/settlements`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(settlement),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create settlement');
+    }
+
+    return response.json();
+  }
+
+  static async getGroupSettlements(groupId: string): Promise<Settlement[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/settlements/group/${groupId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch group settlements');
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching group settlements:', error);
+      return [];
+    }
   }
 }
 
