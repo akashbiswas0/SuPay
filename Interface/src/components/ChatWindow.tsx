@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus } from 'lucide-react';
-
 
 interface ChatWindowProps {
   friendName: string;
@@ -20,12 +18,73 @@ interface Message {
 const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
-  
+  const [groupMembers, setGroupMembers] = useState<{name: string, wallet: string, balance: number}[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
   // When the selected friend/group changes, reset messages
   useEffect(() => {
     // In a real app, we would fetch conversation history here
     setMessages([]);
   }, [friendName]);
+
+  useEffect(() => {
+    if (isGroup) {
+      setLoadingMembers(true);
+      // Fetch group info by name, then fetch members and their balances
+      (async () => {
+        // 1. Get group by name
+        const walletAddress = localStorage.getItem('supay_wallet');
+        let group = null;
+        if (walletAddress) {
+          const groups = await ApiService.getUserGroups(walletAddress);
+          console.log('Fetched groups for wallet', walletAddress, groups); // LOG
+          group = groups.find((g: any) => g.name === friendName);
+          console.log('Matched group by name', friendName, group); // LOG
+        }
+        if (!group) {
+          console.log('No group found for name', friendName); // LOG
+          setGroupMembers([]);
+          setLoadingMembers(false);
+          return;
+        }
+        // 2. Get members from backend
+        const groupMembersUrl = `http://localhost:3000/user_groups/group/${group.id}`;
+        console.log('Fetching group members from', groupMembersUrl); // LOG
+        const res = await fetch(groupMembersUrl);
+        const userGroups = await res.json();
+        console.log('Fetched userGroups for group.id', group.id, userGroups); // LOG
+        if (!Array.isArray(userGroups)) {
+          console.error('userGroups is not an array:', userGroups);
+        }
+        // 3. For each member, get user info and balance (mock balance for now)
+        const members = await Promise.all(userGroups.map(async (ug: any, idx: number) => {
+          console.log('Processing userGroup entry', idx, ug);
+          try {
+            // Use ApiService.getUserById to fetch user details by UUID
+            const user = await ApiService.getUserById(ug.user_id);
+            console.log('Fetched user for member', ug, user); // LOG
+            return {
+              name: user?.name || ug.user_id,
+              wallet: user?.wallet_address || ug.user_id,
+              balance: 0 // TODO: Replace with real balance from contract
+            };
+          } catch (err) {
+            console.error('Error fetching user for member', ug, err);
+            return {
+              name: ug.user_id || 'Unknown',
+              wallet: ug.user_id || 'Unknown',
+              balance: 0
+            };
+          }
+        }));
+        console.log('Final group members array:', members);
+        setGroupMembers(members);
+        setLoadingMembers(false);
+      })();
+    } else {
+      setGroupMembers([]);
+    }
+  }, [friendName, isGroup]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,16 +136,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
         
         <div className="border-b-4 border-black p-4 flex items-center justify-between">
         <h2 className="text-xl font-bold">{friendName}</h2>
-
-  
-  <Button 
-    variant="secondary" 
-    className="border-4 border-black px-16 font-bold h-10 w-10 hover:bg-blue-100 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
-  >
-    Add Hommies
-  </Button>
-</div>
-
+      </div>
 
       <div className="flex-1 p-4 overflow-y-auto">
         {messages.map((msg) => (

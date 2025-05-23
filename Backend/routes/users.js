@@ -55,6 +55,22 @@ router.get('/:wallet_address', async (req, res) => {
   res.json(data);
 });
 
+// Get user by UUID
+router.get('/by-id/:uuid', async (req, res) => {
+  const { uuid } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', uuid)
+      .single();
+    if (error || !data) return res.status(404).json({ error: error || 'User not found' });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
 // Update user
 router.put('/:wallet_address', async (req, res) => {
   const { wallet_address } = req.params;
