@@ -222,7 +222,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
           </div>
         )}
         
-        <form onSubmit={handleSendMessage} className="flex gap-2">
+        {/* <form onSubmit={handleSendMessage} className="flex gap-2">
           <Input 
             placeholder="Send message..." 
             value={message}
@@ -235,7 +235,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
           >
             Send
           </Button>
-        </form>
+        </form> */}
       </div>
 
       {/* Modals */}
