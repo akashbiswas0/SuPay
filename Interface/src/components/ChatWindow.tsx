@@ -146,7 +146,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full border-l border-gray-200 bg-white">
+    <div className="flex-1 flex flex-col h-full border border-gray-200 bg-white">
       <div className="border-b-4 border-black p-5">
         <h2 className="text-xl font-bold">{friendName}</h2>
         {isGroup && (
@@ -222,7 +222,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
           </div>
         )}
         
-        {/* <form onSubmit={handleSendMessage} className="flex gap-2">
+        <form onSubmit={handleSendMessage} className="flex gap-2">
           <Input 
             placeholder="Send message..." 
             value={message}
@@ -235,7 +235,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
           >
             Send
           </Button>
-        </form> */}
+        </form> 
       </div>
 
       {/* Modals */}
