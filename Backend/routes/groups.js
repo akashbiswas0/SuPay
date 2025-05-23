@@ -49,4 +49,22 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// Get groups by owner
+router.get('/', async (req, res) => {
+  const { owner } = req.query;
+  
+  if (!owner) {
+    return res.status(400).json({ error: 'Owner address is required' });
+  }
+  
+  const { data, error } = await supabase
+    .from('groups')
+    .select('*')
+    .eq('owner_address', owner)
+    .order('created_at', { ascending: false });
+    
+  if (error) return res.status(400).json({ error });
+  res.json(data);
+});
+
 module.exports = router;

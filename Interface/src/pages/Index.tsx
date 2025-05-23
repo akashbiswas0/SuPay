@@ -3,13 +3,20 @@ import { useState, useEffect } from "react";
 import { ArrowRight, Wallet, Users, MessageCircle, Send, UserPlus, Calculator, Clock, BarChart3, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useNavigate } from "react-router-dom"; // import navigate
+import { useNavigate } from "react-router-dom";
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
+import UserRegistrationModal from '@/components/UserRegistrationModal';
+import { ApiService, LocalStorageService, User } from '@/services/api';
 
 
 const Index = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [showRegistrationModal, setShowRegistrationModal] = useState(false);
+  const [isCheckingUser, setIsCheckingUser] = useState(false);
+
+  const navigate = useNavigate();
+  const { connected, account } = useWallet();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -19,17 +26,55 @@ const Index = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navigate = useNavigate();
-
-  // useWallet hook gives you wallet connection status
-  const { connected } = useWallet();
-
+  // Handle wallet connection and user authentication
   useEffect(() => {
-    if (connected) {
-      // Redirect to /application once connected
-      navigate('/Application');
-    }
-  }, [connected, navigate]);
+    const handleWalletConnection = async () => {
+      if (connected && account?.address) {
+        setIsCheckingUser(true);
+        
+        try {
+          // Check if user exists in database
+          const existingUser = await ApiService.getUserByWallet(account.address);
+          
+          if (existingUser) {
+            // User exists - save to localStorage and redirect
+            LocalStorageService.saveUser(existingUser);
+            LocalStorageService.saveWalletAddress(account.address);
+            console.log('✅ User logged in:', existingUser);
+            navigate('/main');
+          } else {
+            // New user - show registration modal
+            console.log('👤 New user detected, showing registration modal');
+            setShowRegistrationModal(true);
+          }
+        } catch (error) {
+          console.error('❌ Error checking user:', error);
+          // On error, still show registration modal as fallback
+          setShowRegistrationModal(true);
+        } finally {
+          setIsCheckingUser(false);
+        }
+      }
+    };
+
+    handleWalletConnection();
+  }, [connected, account, navigate]);
+
+  const handleUserCreated = (user: User) => {
+    // Save user data to localStorage
+    LocalStorageService.saveUser(user);
+    LocalStorageService.saveWalletAddress(account!.address);
+    
+    // Close modal and redirect
+    setShowRegistrationModal(false);
+    console.log('✅ User registered and logged in:', user);
+    navigate('/main');
+  };
+
+  const handleRegistrationCancel = () => {
+    setShowRegistrationModal(false);
+    // Optionally disconnect wallet or show message
+  };
 
   const features = [
     {
@@ -381,6 +426,16 @@ const Index = () => {
           </div>
         </div>
       </footer>
+      
+      {/* User Registration Modal */}
+      {showRegistrationModal && account?.address && (
+        <UserRegistrationModal
+          isOpen={showRegistrationModal}
+          walletAddress={account.address}
+          onUserCreated={handleUserCreated}
+          onCancel={handleRegistrationCancel}
+        />
+      )}
     </div>
   );
 };

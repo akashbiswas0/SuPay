@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '@suiet/wallet-kit';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { Card } from "@/components/ui/card";
@@ -7,6 +7,8 @@ import ChatWindow from '@/components/ChatWindow';
 import CreateGroupModal from '@/components/CreateGroupModal';
 import Navbar from "../components/ui/Navbar";
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
+import { ApiService, LocalStorageService } from '@/services/api';
+import { useNavigate } from 'react-router-dom';
 
 const GROUP_PACKAGE_ID = '0x588c00f96eff4b853c832605083ff60386d6f95f83af05ad48d6875896d49dcb';
 
@@ -16,6 +18,29 @@ const Main = () => {
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [isGroup, setIsGroup] = useState(false);
   const [groupError, setGroupError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  // Check if user is authenticated
+  useEffect(() => {
+    const user = LocalStorageService.getUser();
+    const walletAddress = LocalStorageService.getWalletAddress();
+    
+    if (!user || !walletAddress) {
+      console.log('❌ User not authenticated, redirecting to home');
+      navigate('/');
+      return;
+    }
+    
+    // Verify wallet address matches current connected wallet
+    if (account?.address && account.address !== walletAddress) {
+      console.log('❌ Wallet address mismatch, clearing storage and redirecting');
+      LocalStorageService.clearUserData();
+      navigate('/');
+      return;
+    }
+    
+    console.log('✅ User authenticated:', user);
+  }, [account, navigate]);
 
   const handleFriendSelect = (friendName: string, isGroupChat: boolean = false) => {
     setSelectedFriend(friendName);
@@ -215,6 +240,14 @@ const Main = () => {
       // Final result
       if (groupId) {
         console.log('🎉 Successfully extracted group ID:', groupId);
+        
+        // Save group to database
+        try {
+          const savedGroup = await ApiService.createGroup(groupId, groupName, account.address);
+          console.log('✅ Group saved to database:', savedGroup);
+        } catch (error) {
+          console.error('❌ Failed to save group to database:', error);
+        }
       } else {
         console.log('⚠️ Group creation transaction succeeded, but could not extract group ID');
         console.log('Transaction was successful - group exists but ID extraction failed');
