@@ -135,8 +135,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
     <div className="flex-1 flex flex-col h-full border-l border-gray-200 bg-white">
         
         <div className="border-b-4 border-black p-4 flex items-center justify-between">
-        <h2 className="text-xl font-bold">{friendName}</h2>
-      </div>
+  <h2 className="text-xl font-bold">{friendName}</h2>
+  <Button 
+    variant="secondary" 
+    className="border-4 font-bold border-black px-16 h-10 w-10 hover:bg-blue-100 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+  >
+    Add hommies
+  </Button>
+</div>
+
 
       <div className="flex-1 p-4 overflow-y-auto">
         {messages.map((msg) => (
