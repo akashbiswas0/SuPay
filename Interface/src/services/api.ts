@@ -383,3 +383,5 @@ export class LocalStorageService {
     return this.getUser() !== null && this.getWalletAddress() !== null;
   }
 }
+
+

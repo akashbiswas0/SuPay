@@ -15,7 +15,7 @@ interface FriendsListProps {
   selectedFriend: string | null;
 }
 
-const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup, selectedFriend }) => {
+const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup, selectedFriend, onAddFriend }) => {
   const [contacts, setContacts] = useState<Friend[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,11 +67,12 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
   }, [selectedFriend, contacts]);
 
   return (
-    <div className="w-96 border-r-4 border-black flex flex-col h-full bg-white">
+    <div className="w-96 border-r-4 border-h-full border-black flex flex-col h-full bg-white">
       <div className="flex items-center justify-between p-4 border-b-4 border-black">
         <h2 className="text-2xl font-bold">Hommies</h2>
         <Button 
           variant="secondary" 
+          onClick={onAddFriend}
           className="border-4 ml-10 border-black p-0 h-10 w-10 hover:bg-blue-100 shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
         >
           <Plus className="h-5 w-5" />

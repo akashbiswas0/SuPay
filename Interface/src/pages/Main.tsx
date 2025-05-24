@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import FriendsList from '@/components/FriendsList';
 import ChatWindow from '@/components/ChatWindow';
 import CreateGroupModal from '@/components/CreateGroupModal';
+import AddFriendModal from '@/components/AddFriendModal';
 import AddGroupMembersModal from '@/components/AddGroupMembersModal';
 import Navbar from "../components/ui/Navbar";
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
@@ -22,6 +23,7 @@ const Main = () => {
   const [groupError, setGroupError] = useState<string | null>(null);
   const [newGroupId, setNewGroupId] = useState<string | null>(null);
   const [addMembersError, setAddMembersError] = useState<string | null>(null);
+  const [isAddFriendModalOpen, setIsAddFriendModalOpen] = useState(false);
   const navigate = useNavigate();
 
   // Check if user is authenticated
@@ -49,6 +51,15 @@ const Main = () => {
   const handleFriendSelect = (friendName: string, isGroupChat: boolean = false) => {
     setSelectedFriend(friendName);
     setIsGroup(isGroupChat);
+  };
+
+  const handleAddFriend = (friendId: string) => {
+    setIsAddFriendModalOpen(false);
+    handleFriendSelect(friendId, false);
+  };
+
+  const handleAddFriendClick = () => {
+    setIsAddFriendModalOpen(true);
   };
 
   const handleCreateGroup = async (groupName: string) => {
@@ -342,6 +353,7 @@ const Main = () => {
           onFriendSelect={handleFriendSelect}
           onCreateGroup={() => setIsGroupModalOpen(true)}
           selectedFriend={selectedFriend}
+          onAddFriend={handleAddFriendClick}
         />
         
         {selectedFriend ? (
@@ -378,6 +390,12 @@ const Main = () => {
         }}
         onAddMembers={handleAddMembers}
         error={addMembersError}
+      />
+
+        <AddFriendModal 
+        isOpen={isAddFriendModalOpen}
+        onClose={() => setIsAddFriendModalOpen(false)}
+        onAddFriend={handleAddFriend}
       />
     </div>
   );
