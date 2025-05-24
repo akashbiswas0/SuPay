@@ -40,6 +40,48 @@ export interface ExpenseParticipant {
   share_amount: number;
 }
 
+export interface ChatGroup {
+  id: number;
+  name: string;
+  description?: string;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  group_id: number;
+  sender_user_id: string;
+  content: string;
+  message_type: string;
+  sent_at: string;
+  parent_message_id?: number;
+  users?: {
+    id: string;
+    name: string;
+    wallet_address: string;
+  };
+  parent_message?: {
+    id: number;
+    content: string;
+    sender_user_id: string;
+    users?: {
+      id: string;
+      name: string;
+      wallet_address: string;
+    };
+  };
+}
+
+export interface DirectChat extends ChatGroup {
+  other_user?: {
+    id: string;
+    name: string;
+    wallet_address: string;
+  };
+}
+
 export class ApiService {
   // User APIs
   static async createUser(walletAddress: string, name: string): Promise<User> {
@@ -415,6 +457,254 @@ export class ApiService {
       return response.json();
     } catch (error) {
       console.error('Error fetching group settlements:', error);
+      return [];
+    }
+  }
+
+  // Chat APIs
+  
+  // Chat Groups
+  static async createChatGroup(name: string, description: string, createdByUserId: string): Promise<ChatGroup> {
+    const response = await fetch(`${API_BASE_URL}/chat/groups`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+        description,
+        created_by_user_id: createdByUserId
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create chat group');
+    }
+
+    return response.json();
+  }
+
+  // Create or get chat group for existing user group (expense group)
+  static async createChatGroupFromUserGroup(userGroupId: string, userId: string): Promise<ChatGroup> {
+    const response = await fetch(`${API_BASE_URL}/chat/groups/from-user-group`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_group_id: userGroupId,
+        user_id: userId
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create/get chat group from user group');
+    }
+
+    return response.json();
+  }
+
+  static async getChatGroup(groupId: number): Promise<ChatGroup | null> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/groups/${groupId}`);
+      
+      if (response.status === 404) {
+        return null;
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch chat group');
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching chat group:', error);
+      return null;
+    }
+  }
+
+  static async getUserChatGroups(userId: string): Promise<ChatGroup[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/groups/user/${userId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch user chat groups');
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching user chat groups:', error);
+      return [];
+    }
+  }
+
+  static async updateChatGroup(groupId: number, name: string, description?: string): Promise<ChatGroup> {
+    const response = await fetch(`${API_BASE_URL}/chat/groups/${groupId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name, description }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update chat group');
+    }
+
+    return response.json();
+  }
+
+  static async deleteChatGroup(groupId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/chat/groups/${groupId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete chat group');
+    }
+  }
+
+  // Chat Group Members
+  static async addChatGroupMember(groupId: number, userId: string, role: string = 'member'): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/chat/groups/${groupId}/members`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        role
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to add chat group member');
+    }
+
+    return response.json();
+  }
+
+  static async getChatGroupMembers(groupId: number): Promise<any[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/groups/${groupId}/members`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch chat group members');
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching chat group members:', error);
+      return [];
+    }
+  }
+
+  static async removeChatGroupMember(groupId: number, userId: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/chat/groups/${groupId}/members/${userId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to remove chat group member');
+    }
+  }
+
+  // Chat Messages
+  static async sendChatMessage(
+    groupId: number, 
+    senderUserId: string, 
+    content: string, 
+    messageType: string = 'text',
+    parentMessageId?: number
+  ): Promise<ChatMessage> {
+    const response = await fetch(`${API_BASE_URL}/chat/groups/${groupId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender_user_id: senderUserId,
+        content,
+        message_type: messageType,
+        parent_message_id: parentMessageId
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to send message');
+    }
+
+    return response.json();
+  }
+
+  static async getChatMessages(
+    groupId: number, 
+    limit: number = 50, 
+    offset: number = 0, 
+    beforeId?: number
+  ): Promise<ChatMessage[]> {
+    try {
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        offset: offset.toString()
+      });
+      
+      if (beforeId) {
+        params.append('before_id', beforeId.toString());
+      }
+
+      const response = await fetch(`${API_BASE_URL}/chat/groups/${groupId}/messages?${params}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch chat messages');
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching chat messages:', error);
+      return [];
+    }
+  }
+
+  // Direct Chats (1-to-1)
+  static async createOrGetDirectChat(user1Id: string, user2Id: string): Promise<ChatGroup> {
+    const response = await fetch(`${API_BASE_URL}/chat/direct`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user1_id: user1Id,
+        user2_id: user2Id
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create/get direct chat');
+    }
+
+    return response.json();
+  }
+
+  static async getUserDirectChats(userId: string): Promise<DirectChat[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/direct/user/${userId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch user direct chats');
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching user direct chats:', error);
       return [];
     }
   }

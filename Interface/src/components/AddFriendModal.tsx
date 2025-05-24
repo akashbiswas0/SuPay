@@ -125,6 +125,17 @@ const AddFriendModal: React.FC<AddFriendModalProps> = ({
       });
 
       console.log('Friend added successfully:', response.data);
+      
+      // Create/ensure direct chat exists between the two users
+      try {
+        const { ApiService } = await import('../services/api');
+        await ApiService.createOrGetDirectChat(loggedInUserId, userId);
+        console.log('Direct chat created/retrieved for new friendship');
+      } catch (chatError) {
+        console.warn('Warning: Could not create direct chat:', chatError);
+        // Don't fail the friendship process if chat creation fails
+      }
+
       onAddFriend(userName, userId); // Call onAddFriend with friend name and ID
       handleClose(); // Close modal on success
       

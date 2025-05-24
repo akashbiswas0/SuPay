@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ApiService } from '@/services/api';
+import { ApiService, ChatMessage, ChatGroup, DirectChat, LocalStorageService } from '@/services/api';
 import SuiService, { NetBalance } from '@/services/suiService';
 import SettleDebtsModal from './SettleDebtsModal';
 import MakeSplitModal from './MakeSplitModal';
@@ -13,29 +13,139 @@ interface ChatWindowProps {
   friendWalletAddress?: string; // For friend payments
 }
 
-interface Message {
-  id: string;
-  sender: string;
-  content: string;
-  timestamp: string;
-  isPayment?: boolean;
-}
-
 const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWalletAddress }) => {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [groupMembers, setGroupMembers] = useState<{name: string, wallet: string, balance: number, netBalance?: NetBalance}[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [currentGroup, setCurrentGroup] = useState<any>(null);
+  const [currentChatGroup, setCurrentChatGroup] = useState<ChatGroup | DirectChat | null>(null);
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showPayModal, setShowPayModal] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // When the selected friend/group changes, reset messages
+  // Scroll to bottom when messages change
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
   useEffect(() => {
-    // In a real app, we would fetch conversation history here
-    setMessages([]);
-  }, [friendName]);
+    scrollToBottom();
+  }, [messages]);
+
+  // Get current user on component mount
+  useEffect(() => {
+    const user = LocalStorageService.getUser();
+    if (user) {
+      setCurrentUser(user);
+    }
+  }, []);
+
+  // Initialize chat when friendName changes
+  useEffect(() => {
+    initializeChat();
+  }, [friendName, isGroup, currentUser]);
+
+  const initializeChat = async () => {
+    if (!currentUser) return;
+
+    try {
+      if (isGroup) {
+        // Handle group chat
+        await initializeGroupChat();
+      } else {
+        // Handle direct chat (1-to-1)
+        await initializeDirectChat();
+      }
+    } catch (error) {
+      console.error('Error initializing chat:', error);
+    }
+  };
+
+  const initializeGroupChat = async () => {
+    if (!currentUser) return;
+
+    setLoadingMessages(true);
+    try {
+      // First get the expense groups (existing functionality)
+      const walletAddress = localStorage.getItem('supay_wallet');
+      let expenseGroup = null;
+      if (walletAddress) {
+        const groups = await ApiService.getUserGroups(walletAddress);
+        expenseGroup = groups.find((g: any) => g.name === friendName);
+        setCurrentGroup(expenseGroup);
+      }
+
+      // If we have an expense group, create/get the corresponding chat group
+      let chatGroup = null;
+      if (expenseGroup) {
+        // Use the new integration endpoint to create or get chat group for this expense group
+        chatGroup = await ApiService.createChatGroupFromUserGroup(expenseGroup.id, currentUser.id);
+      } else {
+        // Fallback: look for existing chat groups
+        const chatGroups = await ApiService.getUserChatGroups(currentUser.id);
+        chatGroup = chatGroups.find(g => g.name === friendName);
+        
+        if (!chatGroup) {
+          // Create new standalone chat group
+          chatGroup = await ApiService.createChatGroup(
+            friendName,
+            `Chat for ${friendName} group`,
+            currentUser.id
+          );
+        }
+      }
+
+      setCurrentChatGroup(chatGroup);
+
+      // Load messages
+      const chatMessages = await ApiService.getChatMessages(chatGroup.id);
+      setMessages(chatMessages);
+
+      // Fetch group members for balance display
+      await fetchGroupMembers();
+    } catch (error) {
+      console.error('Error initializing group chat:', error);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  const initializeDirectChat = async () => {
+    if (!currentUser || !friendWalletAddress) return;
+
+    setLoadingMessages(true);
+    try {
+      // Get friend user by wallet address
+      const friend = await ApiService.getUserByWallet(friendWalletAddress);
+      if (!friend) {
+        console.error('Friend not found');
+        return;
+      }
+
+      // Create or get direct chat
+      const directChat = await ApiService.createOrGetDirectChat(currentUser.id.toString(), friend.id.toString());
+      setCurrentChatGroup({
+        ...directChat,
+        other_user: {
+          id: friend.id.toString(),
+          name: friend.name,
+          wallet_address: friend.wallet_address
+        }
+      });
+
+      // Load messages
+      const chatMessages = await ApiService.getChatMessages(directChat.id);
+      setMessages(chatMessages);
+    } catch (error) {
+      console.error('Error initializing direct chat:', error);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
 
   // Extract group member fetching logic into a separate function for reuse
   const fetchGroupMembers = async () => {
@@ -143,20 +253,43 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWall
     // The extracted function already handles this logic
   }, [friendName, isGroup]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim()) {
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        sender: 'You', // In a real app, this would be the user's name
-        content: message,
-        timestamp: new Date().toISOString(),
-      };
-      
-      setMessages(prevMessages => [...prevMessages, newMessage]);
+    if (!message.trim() || !currentChatGroup || !currentUser) return;
+
+    try {
+      const sentMessage = await ApiService.sendChatMessage(
+        currentChatGroup.id,
+        currentUser.id.toString(),
+        message.trim()
+      );
+
+      // Add the message to local state immediately for better UX
+      setMessages(prevMessages => [...prevMessages, sentMessage]);
       setMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Could show a toast notification here
     }
   };
+
+  // Poll for new messages every 3 seconds
+  useEffect(() => {
+    if (!currentChatGroup) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const latestMessages = await ApiService.getChatMessages(currentChatGroup.id);
+        if (latestMessages.length > messages.length) {
+          setMessages(latestMessages);
+        }
+      } catch (error) {
+        console.error('Error polling for messages:', error);
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [currentChatGroup, messages.length]);
 
   const handleSettle = () => {
     console.log('handleSettle called - isGroup:', isGroup, 'currentGroup:', currentGroup);
@@ -209,25 +342,40 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWall
       </div>
 
       <div className="flex-1 p-4 overflow-y-auto">
-        {messages.map((msg) => (
-          <div 
-            key={msg.id}
-            className={`mb-2 max-w-[30%] ${msg.sender === 'You' ? 'ml-auto' : ''}`}
-          >
-            <div className={`p-2 rounded-lg border-4 border-black shadow-brutal-sm ${
-              msg.sender === 'You' 
-                ? 'bg-blue-100' 
-                : msg.isPayment 
-                  ? 'bg-green-100' 
-                  : 'bg-white'
-            }`}>
-              {msg.sender !== 'You' && !msg.isPayment && (
-                <p className="font-bold mb-1">{msg.sender}</p>
-              )}
-              <p>{msg.content}</p>
-            </div>
-          </div>
-        ))}
+        {loadingMessages ? (
+          <div className="text-center text-gray-500">Loading messages...</div>
+        ) : messages.length === 0 ? (
+          <div className="text-center text-gray-500">No messages yet. Start the conversation!</div>
+        ) : (
+          messages.map((msg) => {
+            const isCurrentUser = currentUser && msg.sender_user_id === currentUser.id.toString();
+            const senderName = msg.users?.name || 'Unknown User';
+            
+            return (
+              <div 
+                key={msg.id}
+                className={`mb-3 max-w-[70%] ${isCurrentUser ? 'ml-auto' : ''}`}
+              >
+                <div className={`p-3 rounded-lg border-4 border-black shadow-brutal-sm ${
+                  isCurrentUser 
+                    ? 'bg-blue-100' 
+                    : msg.message_type === 'payment'
+                      ? 'bg-green-100' 
+                      : 'bg-white'
+                }`}>
+                  {!isCurrentUser && (
+                    <p className="font-bold mb-1 text-sm">{senderName}</p>
+                  )}
+                  <p>{msg.content}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(msg.sent_at).toLocaleTimeString()}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="p-4 fixed bottom-0 w-3/4 border-t-4 bg-slate-200 pr-10 border-black">
