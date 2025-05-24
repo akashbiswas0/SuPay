@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ApiService, LocalStorageService, Group } from '../services/api';
+import { ApiService, LocalStorageService, Group, User } from '../services/api';
 
 interface Friend {
   id: string;
   name: string;
   isGroup: boolean;
+  walletAddress?: string; // For friends only
 }
 
 interface FriendsListProps {
-  onFriendSelect: (friendName: string, isGroup?: boolean) => void;
+  onFriendSelect: (friendName: string, isGroup?: boolean, walletAddress?: string) => void;
   onCreateGroup: () => void;
   selectedFriend: string | null;
+  onAddFriend: () => void;
 }
 
 const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup, selectedFriend, onAddFriend }) => {
@@ -20,8 +22,8 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Fetch user's groups from API
-  const fetchUserGroups = async () => {
+  // Fetch user's groups and friends from API
+  const fetchUserContactsAndGroups = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -31,9 +33,20 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
         throw new Error('No wallet address found');
       }
       
-      // This now fetches both owned groups and groups the user is a member of
-      const groups = await ApiService.getUserGroups(walletAddress);
-      console.log('Fetched all groups (owned and member groups) for current wallet:', groups.length);
+      // Get current user to fetch friends
+      const currentUser = await ApiService.getUserByWallet(walletAddress);
+      if (!currentUser) {
+        throw new Error('Current user not found');
+      }
+      
+      // Fetch both groups and friends in parallel
+      const [groups, friends] = await Promise.all([
+        ApiService.getUserGroups(walletAddress),
+        ApiService.getUserFriends(currentUser.id.toString())
+      ]);
+      
+      console.log('Fetched groups:', groups.length);
+      console.log('Fetched friends:', friends.length);
       
       // Convert groups to Friend format
       const groupContacts: Friend[] = groups.map((group: Group) => ({
@@ -42,27 +55,37 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
         isGroup: true
       }));
       
-      setContacts(groupContacts);
+      // Convert friends to Friend format
+      const friendContacts: Friend[] = friends.map((friend: User) => ({
+        id: friend.id.toString(),
+        name: friend.name,
+        isGroup: false,
+        walletAddress: friend.wallet_address
+      }));
+      
+      // Combine friends and groups
+      const allContacts = [...friendContacts, ...groupContacts];
+      setContacts(allContacts);
     } catch (err) {
-      console.error('Error fetching user groups:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch groups');
+      console.error('Error fetching user contacts and groups:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch contacts and groups');
       setContacts([]); // Show empty list on error
     } finally {
       setLoading(false);
     }
   };
   
-  // Fetch groups on component mount
+  // Fetch contacts and groups on component mount
   useEffect(() => {
-    fetchUserGroups();
+    fetchUserContactsAndGroups();
   }, []);
   
-  // Listen for changes to selected friend to detect new groups
+  // Listen for changes to selected friend to detect new groups or friends
   useEffect(() => {
-    // If selectedFriend is not null and not found in current contacts, refetch groups
-    // This handles the case when a new group is created
+    // If selectedFriend is not null and not found in current contacts, refetch
+    // This handles the case when a new group is created or friend is added
     if (selectedFriend && !contacts.some(contact => contact.name === selectedFriend)) {
-      fetchUserGroups();
+      fetchUserContactsAndGroups();
     }
   }, [selectedFriend, contacts]);
 
@@ -88,12 +111,12 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
 
       <div className="overflow-y-auto flex-1">
         {loading ? (
-          <div className="p-4 text-center text-gray-500">Loading groups...</div>
+          <div className="p-4 text-center text-gray-500">Loading friends and groups...</div>
         ) : error ? (
           <div className="p-4 text-center text-red-500">
             <div className="mb-2">Error: {error}</div>
             <button 
-              onClick={fetchUserGroups}
+              onClick={fetchUserContactsAndGroups}
               className="text-blue-600 underline hover:text-blue-800"
             >
               Retry
@@ -101,8 +124,8 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
           </div>
         ) : contacts.length === 0 ? (
           <div className="p-4 text-center text-gray-500">
-            <div className="mb-2">No groups found</div>
-            <div className="text-sm">Create a group or join one to get started!</div>
+            <div className="mb-2">No friends or groups found</div>
+            <div className="text-sm">Add friends or create a group to get started!</div>
           </div>
         ) : (
           contacts.map((contact) => (
@@ -111,12 +134,14 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
               className={`p-4 border-b border-black cursor-pointer hover:bg-blue-50 transition-colors ${
                 selectedFriend === contact.name ? 'bg-blue-100 font-bold' : ''
               }`}
-              onClick={() => onFriendSelect(contact.name, contact.isGroup)}
+              onClick={() => onFriendSelect(contact.name, contact.isGroup, contact.walletAddress)}
             >
               <div className="flex items-center">
                 <span className="flex-1 truncate">{contact.name}</span>
-                {contact.isGroup && (
+                {contact.isGroup ? (
                   <span className="text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded">Group</span>
+                ) : (
+                  <span className="text-xs bg-green-600 text-white px-1.5 py-0.5 rounded">Friend</span>
                 )}
               </div>
             </div>

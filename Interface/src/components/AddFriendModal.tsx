@@ -95,18 +95,16 @@ const AddFriendModal: React.FC<AddFriendModalProps> = ({
     const loggedInUserSupayData = localStorage.getItem('supay_user');
     if (!loggedInUserSupayData) {
       setError("Could not find logged-in user ID. Please log in again.");
-      // Potentially redirect to login or show a more prominent error
       return;
     }
 
-    let friend_id;
+    let loggedInUserId;
     try {
       // Assuming supay_user stored in local storage is a JSON string with an 'id' field
-      // Adjust parsing if the structure is different
       const supayUserObject = JSON.parse(loggedInUserSupayData);
-      friend_id = supayUserObject?.id; // Or directly use the value if it's just the ID string
+      loggedInUserId = supayUserObject?.id;
 
-      if (!friend_id) {
+      if (!loggedInUserId) {
         setError("Logged-in user ID is invalid. Please log in again.");
         return;
       }
@@ -116,19 +114,18 @@ const AddFriendModal: React.FC<AddFriendModalProps> = ({
       return;
     }
 
-
     setIsAddingFriend(true);
-    setError(''); // Clear previous errors
+    setError('');
 
     try {
       const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
-      const response = await axios.post(`${BACKEND_URL}/friends`, { // Assuming your endpoint is /friends
-        user_id: userId, // The ID of the user being added
-        friend_id: friend_id // The ID of the logged-in user from localStorage
+      const response = await axios.post(`${BACKEND_URL}/friends`, {
+        user_id: loggedInUserId, // The logged-in user ID
+        friend_id: userId // The ID of the user being added as friend
       });
 
       console.log('Friend added successfully:', response.data);
-      onAddFriend(userName, userId); // Call original onAddFriend for UI update
+      onAddFriend(userName, userId); // Call onAddFriend with friend name and ID
       handleClose(); // Close modal on success
 
     } catch (err) {

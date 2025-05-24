@@ -253,6 +253,79 @@ export class ApiService {
     return results;
   }
 
+  // Friends APIs
+  static async getUserFriends(userId: string): Promise<User[]> {
+    try {
+      // Get friend IDs for the user
+      const response = await fetch(`${API_BASE_URL}/friends/${userId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch user friends');
+      }
+
+      const friendsData = await response.json();
+      
+      if (!friendsData || friendsData.length === 0) {
+        return [];
+      }
+
+      // Get full user details for each friend
+      const friends: User[] = [];
+      
+      for (const friendItem of friendsData) {
+        const friend = await this.getUserById(friendItem.friend_id);
+        if (friend) {
+          friends.push(friend);
+        }
+      }
+      
+      return friends;
+    } catch (error) {
+      console.error('Error fetching user friends:', error);
+      return [];
+    }
+  }
+
+  static async addFriend(userId: string, friendId: string): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/friends`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        friend_id: friendId
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to add friend');
+    }
+
+    return response.json();
+  }
+
+  static async removeFriend(userId: string, friendId: string): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/friends`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        friend_id: friendId
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to remove friend');
+    }
+
+    return response.json();
+  }
+
   // Expense APIs
   static async createExpense(expense: Omit<Expense, 'created_at'>): Promise<Expense> {
     const response = await fetch(`${API_BASE_URL}/expenses`, {

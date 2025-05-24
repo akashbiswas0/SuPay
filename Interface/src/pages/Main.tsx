@@ -17,6 +17,7 @@ const GROUP_PACKAGE_ID = '0xacf3a40f5a933bdc21dba42014a6d9dcd16fd08367985e7a5d7f
 const Main = () => {
   const { signAndExecuteTransactionBlock, account } = useWallet();
   const [selectedFriend, setSelectedFriend] = useState<string | null>(null);
+  const [selectedFriendWallet, setSelectedFriendWallet] = useState<string | null>(null);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [isAddMembersModalOpen, setIsAddMembersModalOpen] = useState(false);
   const [isGroup, setIsGroup] = useState(false);
@@ -48,14 +49,15 @@ const Main = () => {
     console.log('✅ User authenticated:', user);
   }, [account, navigate]);
 
-  const handleFriendSelect = (friendName: string, isGroupChat: boolean = false) => {
+  const handleFriendSelect = (friendName: string, isGroupChat: boolean = false, walletAddress?: string) => {
     setSelectedFriend(friendName);
     setIsGroup(isGroupChat);
+    setSelectedFriendWallet(walletAddress || null);
   };
 
-  const handleAddFriend = (friendId: string) => {
+  const handleAddFriend = (friendName: string, friendId: string) => {
     setIsAddFriendModalOpen(false);
-    handleFriendSelect(friendId, false);
+    handleFriendSelect(friendName, false); // Use friendName instead of friendId for selection
   };
 
   const handleAddFriendClick = () => {
@@ -360,6 +362,7 @@ const Main = () => {
           <ChatWindow 
             friendName={selectedFriend}
             isGroup={isGroup}
+            friendWalletAddress={selectedFriendWallet || undefined}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center">

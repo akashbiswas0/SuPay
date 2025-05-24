@@ -5,10 +5,12 @@ import { ApiService } from '@/services/api';
 import SuiService, { NetBalance } from '@/services/suiService';
 import SettleDebtsModal from './SettleDebtsModal';
 import MakeSplitModal from './MakeSplitModal';
+import PayModal from './PayModal';
 
 interface ChatWindowProps {
   friendName: string;
   isGroup: boolean;
+  friendWalletAddress?: string; // For friend payments
 }
 
 interface Message {
@@ -19,7 +21,7 @@ interface Message {
   isPayment?: boolean;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWalletAddress }) => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [groupMembers, setGroupMembers] = useState<{name: string, wallet: string, balance: number, netBalance?: NetBalance}[]>([]);
@@ -27,6 +29,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
   const [currentGroup, setCurrentGroup] = useState<any>(null);
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
+  const [showPayModal, setShowPayModal] = useState(false);
 
   // When the selected friend/group changes, reset messages
   useEffect(() => {
@@ -227,10 +230,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
         ) : (
           <div className="flex gap-2 mb-4">
             <Button 
-              onClick={handleSettle}
-              className="flex-1 border-4 border-black bg-blue-600 hover:bg-blue-700 text-white shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+              onClick={() => setShowPayModal(true)}
+              className="flex-1 border-4 border-black bg-green-600 hover:bg-green-700 text-white shadow-brutal-sm hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
+              disabled={!friendWalletAddress}
             >
-              Settle
+              Pay
             </Button>
           </div>
         )}
@@ -278,6 +282,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
             console.error('Cannot render modals: Missing group ID for group', currentGroup.name)
           )}
         </>
+      )}
+
+      {/* Pay Modal for friends */}
+      {!isGroup && friendWalletAddress && (
+        <PayModal
+          isOpen={showPayModal}
+          onClose={() => setShowPayModal(false)}
+          friendName={friendName}
+          friendWalletAddress={friendWalletAddress}
+        />
       )}
     </div>
   );
