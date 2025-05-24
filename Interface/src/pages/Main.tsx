@@ -7,7 +7,7 @@ import ChatWindow from '@/components/ChatWindow';
 import CreateGroupModal from '@/components/CreateGroupModal';
 import AddFriendModal from '@/components/AddFriendModal';
 import AddGroupMembersModal from '@/components/AddGroupMembersModal';
-import Navbar from "../components/ui/Navbar";
+import Navbar from "../components/ui/navbar";
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import { ApiService, LocalStorageService } from '@/services/api';
 import { useNavigate } from 'react-router-dom';
