@@ -64,7 +64,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWall
         return;
       }
       // 2. Get members from backend
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
       const groupMembersUrl = `${backendUrl}/user_groups/group/${group.id}`;
       console.log('Fetching group members from', groupMembersUrl); // LOG
       const res = await fetch(groupMembersUrl);
