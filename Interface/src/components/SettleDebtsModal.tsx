@@ -331,7 +331,7 @@ const SettleDebtsModal: React.FC<SettleDebtsModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md border-4 border-black shadow-brutal bg-white">
+      <DialogContent className="sm:max-w-2xl border-4 border-black shadow-brutal bg-white">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold border-b-4 border-black pb-2">
             Settle Outstanding Debts
