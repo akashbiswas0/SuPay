@@ -1,7 +1,7 @@
 import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 
-const PACKAGE_ID = '0x588c00f96eff4b853c832605083ff60386d6f95f83af05ad48d6875896d49dcb';
+const PACKAGE_ID = '0xacf3a40f5a933bdc21dba42014a6d9dcd16fd08367985e7a5d7f383731be72b6';
 
 export interface MemberDebt {
   creditor: string;
@@ -37,9 +37,16 @@ export class SuiService {
    */
   async getMemberDebts(groupId: string, memberAddress: string): Promise<MemberDebt[]> {
     try {
+      console.log(`getMemberDebts - Starting with groupId: ${groupId}, memberAddress: ${memberAddress}`);
+      if (!groupId) {
+        console.error('getMemberDebts - Invalid groupId:', groupId);
+        throw new Error('Invalid groupId provided');
+      }
+      if (!memberAddress) {
+        console.error('getMemberDebts - Invalid memberAddress:', memberAddress);
+        throw new Error('Invalid memberAddress provided');
+      }
       const txb = new TransactionBlock();
-      
-      // Call the smart contract view function
       txb.moveCall({
         target: `${PACKAGE_ID}::payment_splitter::get_member_debts`,
         arguments: [
@@ -47,35 +54,85 @@ export class SuiService {
           txb.pure(memberAddress, 'address')
         ],
       });
-
+      console.log(`getMemberDebts - Executing transaction with groupId: ${groupId}`);
       const result = await this.client.devInspectTransactionBlock({
         transactionBlock: txb,
         sender: memberAddress,
       });
-
+      console.log('getMemberDebts - Raw transaction result:', result);
       if (result.results?.[0]?.returnValues) {
         const returnValues = result.results[0].returnValues;
-        
-        // Parse the returned vectors (creditors and amounts)
-        const creditorsData = returnValues[0]?.[0];
-        const amountsData = returnValues[1]?.[0];
-        
-        if (creditorsData && amountsData) {
-          // Parse the BCS encoded data
-          const creditors = this.parseBcsVector(creditorsData, 'address');
-          const amounts = this.parseBcsVector(amountsData, 'u64');
-          
-          return creditors.map((creditor: string, index: number) => ({
-            creditor,
-            amount: amounts[index] / 1000000000 // Convert from MIST to SUI
-          }));
+        console.log('getMemberDebts - FULL returnValues:', JSON.stringify(returnValues));
+        let creditors: string[] = [];
+        let amounts: number[] = [];
+        const creditorsRaw = returnValues[0]?.[0];
+        const amountsRaw = returnValues[1]?.[0];
+        // --- Handle single address/amount as length-prefixed arrays ---
+        if (Array.isArray(creditorsRaw) && creditorsRaw.length === 33 && creditorsRaw[0] === 1) {
+          // Single address, bytes 1-32
+          const addrArr = creditorsRaw.slice(1, 33);
+          creditors = ['0x' + addrArr.map(b => b.toString(16).padStart(2, '0')).join('')];
+          console.log('getMemberDebts - Parsed single creditor from 33-byte array:', creditors);
+        } else if (Array.isArray(creditorsRaw) && creditorsRaw.length > 0) {
+          if (creditorsRaw.every((el: any) => Array.isArray(el) && el.length === 32 && el.every((b: any) => typeof b === 'number'))) {
+            creditors = creditorsRaw.filter((el: any) => Array.isArray(el) && el.length === 32).map((addrArr: any) =>
+              '0x' + addrArr.map((b: number) => b.toString(16).padStart(2, '0')).join('')
+            );
+            console.log('getMemberDebts - Parsed creditors as array of 32-byte arrays:', creditors);
+          } else if (creditorsRaw.every((el: any) => typeof el === 'number') && creditorsRaw.length % 32 === 0) {
+            // Case 2: Flat array of bytes
+            creditors = [];
+            for (let i = 0; i < creditorsRaw.length; i += 32) {
+              const chunk = (creditorsRaw as number[]).slice(i, i + 32);
+              creditors.push('0x' + chunk.map(b => b.toString(16).padStart(2, '0')).join(''));
+            }
+            console.log('getMemberDebts - Parsed creditors as flat byte array:', creditors);
+          } else if (creditorsRaw.every((el: any) => typeof el === 'string' && (el as string).startsWith('0x'))) {
+            // Case 3: Already decoded as hex strings
+            creditors = (creditorsRaw as unknown as string[]);
+            console.log('getMemberDebts - Parsed creditors as hex strings:', creditors);
+          } else {
+            // Fallback to BCS
+            creditors = this.parseBcsVector(creditorsRaw, 'address');
+            console.log('getMemberDebts - Parsed creditors using BCS fallback:', creditors);
+          }
+        } else {
+          creditors = [];
         }
+        // Handle single amount as length-prefixed array
+        if (Array.isArray(amountsRaw) && amountsRaw.length === 9 && amountsRaw[0] === 1) {
+          // Single amount, bytes 1-8
+          const amt = this.parseBcsU64(amountsRaw.slice(1, 9));
+          amounts = [amt];
+          console.log('getMemberDebts - Parsed single amount from 9-byte array:', amounts);
+        } else if (Array.isArray(amountsRaw) && amountsRaw.length > 0) {
+          if (amountsRaw.every((el: any) => typeof el === 'number')) {
+            amounts = amountsRaw as number[];
+            console.log('getMemberDebts - Parsed amounts as numbers:', amounts);
+          } else {
+            amounts = this.parseBcsVector(amountsRaw, 'u64');
+            console.log('getMemberDebts - Parsed amounts using BCS fallback:', amounts);
+          }
+        } else {
+          amounts = [];
+        }
+        if (creditors.length !== amounts.length) {
+          console.error('getMemberDebts - Mismatch between creditors and amounts arrays', { creditors: creditors.length, amounts: amounts.length });
+          return [];
+        }
+        const debts = creditors.map((creditor: string, index: number) => ({
+          creditor,
+          amount: amounts[index] / 1000000000 // Convert from MIST to SUI
+        }));
+        console.log('getMemberDebts - Final mapped debts:', debts);
+        return debts;
+      } else {
+        console.log('getMemberDebts - No creditors or amounts data found');
+        return [];
       }
-      
-      return [];
     } catch (error) {
       console.error('Error fetching member debts:', error);
-      return [];
+      throw error;
     }
   }
 
@@ -346,7 +403,7 @@ export class SuiService {
   }
 
   /**
-   * Create an expense on the smart contract (real transaction)
+   * Create an expense on the smart contract (no upfront payment required)
    */
   async createExpense(
     groupId: string,
@@ -358,22 +415,24 @@ export class SuiService {
     try {
       const txb = new TransactionBlock();
       const amountInMist = Math.floor(amountInSui * 1_000_000_000);
-      const [coin] = txb.splitCoins(txb.gas, [txb.pure(amountInMist)]);
       const descriptionBytes = Array.from(new TextEncoder().encode(description));
+      
       txb.moveCall({
         target: `${PACKAGE_ID}::payment_splitter::create_expense`,
         arguments: [
           txb.object(groupId),
           txb.pure(descriptionBytes),
-          coin,
+          txb.pure(amountInMist, 'u64'),
           txb.pure(participants)
         ],
       });
+      
       // Directly call the provided sign and execute function
       const result = await signAndExecuteTransactionBlock({
         transactionBlock: txb,
         options: { showEffects: true },
       });
+      
       return {
         success: true,
         transactionDigest: result.digest,
@@ -383,6 +442,49 @@ export class SuiService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to create expense'
+      };
+    }
+  }
+
+  /**
+   * Pay a group member directly (calls pay_member entry function)
+   */
+  async payMember(
+    groupId: string,
+    recipientAddress: string,
+    amountInSui: number,
+    signerAddress: string,
+    signAndExecuteTransactionBlock: Function
+  ): Promise<{ success: boolean; transactionDigest?: string; error?: string }> {
+    try {
+      const txb = new TransactionBlock();
+      // Convert SUI to MIST (multiply by 10^9)
+      const amountInMist = Math.floor(amountInSui * 1000000000);
+      // Create a coin object with the payment amount
+      const [coin] = txb.splitCoins(txb.gas, [txb.pure(amountInMist)]);
+      // Call the pay_member function
+      txb.moveCall({
+        target: `${PACKAGE_ID}::payment_splitter::pay_member`,
+        arguments: [
+          txb.object(groupId),
+          txb.pure(recipientAddress, 'address'),
+          coin
+        ],
+      });
+      // Execute the transaction using the wallet's signing function
+      const result = await signAndExecuteTransactionBlock({
+        transactionBlock: txb,
+        options: { showEffects: true },
+      });
+      return {
+        success: true,
+        transactionDigest: result.digest
+      };
+    } catch (error) {
+      console.error('Error paying member:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to pay member'
       };
     }
   }
@@ -404,31 +506,31 @@ export class SuiService {
 
   private parseBcsVector(data: number[], type: 'address' | 'u64'): any[] {
     if (!data || data.length === 0) return [];
-    
     try {
-      // This is a simplified parser - in production you'd want to use proper BCS parsing
       const result = [];
       let offset = 0;
-      
       // Read vector length (first 4 bytes as little-endian u32)
       const length = data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24);
       offset = 4;
-      
+      const elementSize = type === 'address' ? 32 : 8;
+      const expectedLength = offset + length * elementSize;
+      if (data.length < expectedLength) {
+        console.error(`parseBcsVector: Data too short for expected vector. type=${type}, length=${length}, data.length=${data.length}, expectedLength=${expectedLength}, data=`, data);
+        return [];
+      }
+      console.log(`parseBcsVector: type=${type}, length=${length}, data.length=${data.length}`);
       for (let i = 0; i < length; i++) {
         if (type === 'address') {
-          // Addresses are 32 bytes (actually 20 bytes for Ethereum-style, but Sui uses 32)
           const addressBytes = data.slice(offset, offset + 32);
           const address = '0x' + addressBytes.map(b => b.toString(16).padStart(2, '0')).join('');
           result.push(address);
           offset += 32;
         } else if (type === 'u64') {
-          // u64 is 8 bytes
           const value = this.parseBcsU64(data.slice(offset, offset + 8));
           result.push(value);
           offset += 8;
         }
       }
-      
       return result;
     } catch (error) {
       console.error('Error parsing BCS vector:', error);

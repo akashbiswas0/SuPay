@@ -43,8 +43,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
         const walletAddress = localStorage.getItem('supay_wallet');
         let group = null;
         if (walletAddress) {
+          // This will now fetch both owned groups and groups the user is a member of
           const groups = await ApiService.getUserGroups(walletAddress);
-          console.log('Fetched groups for wallet', walletAddress, groups); // LOG
+          console.log('Fetched all groups (owned and member) for wallet', walletAddress, groups); // LOG
           group = groups.find((g: any) => g.name === friendName);
           console.log('Matched group by name', friendName, group); // LOG
           setCurrentGroup(group); // Store the current group
@@ -56,7 +57,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
           return;
         }
         // 2. Get members from backend
-        const groupMembersUrl = `http://localhost:3000/user_groups/group/${group.id}`;
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+        const groupMembersUrl = `${backendUrl}/user_groups/group/${group.id}`;
         console.log('Fetching group members from', groupMembersUrl); // LOG
         const res = await fetch(groupMembersUrl);
         const userGroups = await res.json();
@@ -83,7 +85,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
                 console.log('Smart contract balance result:', netBalance);
                 
                 // Display net balance (positive means they are owed money, negative means they owe money)
-                displayBalance = netBalance.is_positive ? netBalance.net_amount : -netBalance.debt_amount;
+                if (netBalance.is_positive) {
+                  displayBalance = netBalance.net_amount; // They are owed money (positive)
+                } else {
+                  displayBalance = -netBalance.debt_amount; // They owe money (negative)
+                }
               } catch (contractError) {
                 console.error('Error fetching balance from smart contract:', contractError);
                 // Fallback to 0 if contract call fails
@@ -131,7 +137,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
   };
 
   const handleSettle = () => {
+    console.log('handleSettle called - isGroup:', isGroup, 'currentGroup:', currentGroup);
     if (isGroup && currentGroup) {
+      // Make sure we have a valid groupId before opening the modal
+      if (!currentGroup.id) {
+        console.error('Cannot open settlement modal: Missing group ID');
+        return;
+      }
+      console.log('Opening settle modal for group:', currentGroup.name, 'with ID:', currentGroup.id);
       setShowSettleModal(true);
     } else {
       console.log('Settlement initiated for individual:', friendName);
@@ -241,19 +254,29 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup }) => {
       {/* Modals */}
       {isGroup && currentGroup && (
         <>
-          <SettleDebtsModal
-            isOpen={showSettleModal}
-            onClose={() => setShowSettleModal(false)}
-            groupId={currentGroup.id}
-            groupName={currentGroup.name}
-          />
-          <MakeSplitModal
-            isOpen={showSplitModal}
-            onClose={() => setShowSplitModal(false)}
-            groupId={currentGroup.id}
-            groupName={currentGroup.name}
-            groupMembers={groupMembers}
-          />
+          {/* Check if we have a valid group ID before rendering the modal */}
+          {currentGroup.id ? (
+            <>
+              <SettleDebtsModal
+                isOpen={showSettleModal}
+                onClose={() => {
+                  console.log('Closing SettleDebtsModal');
+                  setShowSettleModal(false);
+                }}
+                groupId={currentGroup.id}
+                groupName={currentGroup.name}
+              />
+              <MakeSplitModal
+                isOpen={showSplitModal}
+                onClose={() => setShowSplitModal(false)}
+                groupId={currentGroup.id}
+                groupName={currentGroup.name}
+                groupMembers={groupMembers}
+              />
+            </>
+          ) : (
+            console.error('Cannot render modals: Missing group ID for group', currentGroup.name)
+          )}
         </>
       )}
     </div>

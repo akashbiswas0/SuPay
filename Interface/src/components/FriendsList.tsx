@@ -31,7 +31,9 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
         throw new Error('No wallet address found');
       }
       
+      // This now fetches both owned groups and groups the user is a member of
       const groups = await ApiService.getUserGroups(walletAddress);
+      console.log('Fetched all groups (owned and member groups) for current wallet:', groups.length);
       
       // Convert groups to Friend format
       const groupContacts: Friend[] = groups.map((group: Group) => ({
@@ -98,8 +100,8 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
           </div>
         ) : contacts.length === 0 ? (
           <div className="p-4 text-center text-gray-500">
-            <div className="mb-2">No groups yet</div>
-            <div className="text-sm">Create your first group to get started!</div>
+            <div className="mb-2">No groups found</div>
+            <div className="text-sm">Create a group or join one to get started!</div>
           </div>
         ) : (
           contacts.map((contact) => (

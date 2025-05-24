@@ -11,7 +11,7 @@ import { SuiClient, getFullnodeUrl } from '@mysten/sui.js/client';
 import { ApiService, LocalStorageService } from '@/services/api';
 import { useNavigate } from 'react-router-dom';
 
-const GROUP_PACKAGE_ID = '0x588c00f96eff4b853c832605083ff60386d6f95f83af05ad48d6875896d49dcb';
+const GROUP_PACKAGE_ID = '0xacf3a40f5a933bdc21dba42014a6d9dcd16fd08367985e7a5d7f383731be72b6';
 
 const Main = () => {
   const { signAndExecuteTransactionBlock, account } = useWallet();

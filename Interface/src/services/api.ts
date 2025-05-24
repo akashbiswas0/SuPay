@@ -157,13 +157,59 @@ export class ApiService {
 
   static async getUserGroups(walletAddress: string): Promise<Group[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/groups?owner=${walletAddress}`);
+      // Get owned groups (where user is the owner)
+      const ownedResponse = await fetch(`${API_BASE_URL}/groups?owner=${walletAddress}`);
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch user groups');
+      if (!ownedResponse.ok) {
+        throw new Error('Failed to fetch owned groups');
       }
-
-      return response.json();
+      
+      const ownedGroups: Group[] = await ownedResponse.json();
+      
+      // Get user ID from wallet address to find member groups
+      const user = await this.getUserByWallet(walletAddress);
+      if (!user) {
+        console.log('User not found for wallet address:', walletAddress);
+        return ownedGroups; // Return only owned groups if user not found
+      }
+      
+      // Get groups where user is a member
+      const memberGroupsResponse = await fetch(`${API_BASE_URL}/user_groups/${user.id}`);
+      
+      if (!memberGroupsResponse.ok) {
+        console.error('Failed to fetch member groups');
+        return ownedGroups; // Return only owned groups on error
+      }
+      
+      const memberGroupsData = await memberGroupsResponse.json();
+      
+      // If no member groups, return only owned groups
+      if (!memberGroupsData || memberGroupsData.length === 0) {
+        return ownedGroups;
+      }
+      
+      // For each member group, get the full group details
+      const memberGroupIds = memberGroupsData.map((item: any) => item.group_id);
+      const memberGroups: Group[] = [];
+      
+      for (const groupId of memberGroupIds) {
+        const group = await this.getGroupById(groupId);
+        if (group) {
+          memberGroups.push(group);
+        }
+      }
+      
+      // Combine owned and member groups, filtering out duplicates
+      const allGroups = [...ownedGroups];
+      
+      // Add member groups that aren't already in owned groups
+      memberGroups.forEach(memberGroup => {
+        if (!allGroups.some(g => g.id === memberGroup.id)) {
+          allGroups.push(memberGroup);
+        }
+      });
+      
+      return allGroups;
     } catch (error) {
       console.error('Error fetching user groups:', error);
       return [];
