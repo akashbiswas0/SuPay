@@ -1,18 +1,15 @@
-
 import { useState, useEffect } from "react";
 import { ArrowRight, Wallet, Users, MessageCircle, Send, UserPlus, Calculator, Clock, BarChart3, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { ConnectButton, useWallet } from '@suiet/wallet-kit';
-import UserRegistrationModal from '@/components/UserRegistrationModal';
 import { ApiService, LocalStorageService, User } from '@/services/api';
 
 
 const Index = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   const [isCheckingUser, setIsCheckingUser] = useState(false);
 
   const navigate = useNavigate();
@@ -43,14 +40,14 @@ const Index = () => {
             console.log('✅ User logged in:', existingUser);
             navigate('/main');
           } else {
-            // New user - show registration modal
-            console.log('👤 New user detected, showing registration modal');
-            setShowRegistrationModal(true);
+            // New user - redirect to registration page
+            console.log('👤 New user detected, redirecting to registration page');
+            navigate('/application');
           }
         } catch (error) {
           console.error('❌ Error checking user:', error);
-          // On error, still show registration modal as fallback
-          setShowRegistrationModal(true);
+          // On error, still redirect to registration page as fallback
+          navigate('/application');
         } finally {
           setIsCheckingUser(false);
         }
@@ -66,14 +63,8 @@ const Index = () => {
     LocalStorageService.saveWalletAddress(account!.address);
     
     // Close modal and redirect
-    setShowRegistrationModal(false);
     console.log('✅ User registered and logged in:', user);
     navigate('/main');
-  };
-
-  const handleRegistrationCancel = () => {
-    setShowRegistrationModal(false);
-    // Optionally disconnect wallet or show message
   };
 
   const features = [
@@ -426,16 +417,6 @@ const Index = () => {
           </div>
         </div>
       </footer>
-      
-      {/* User Registration Modal */}
-      {showRegistrationModal && account?.address && (
-        <UserRegistrationModal
-          isOpen={showRegistrationModal}
-          walletAddress={account.address}
-          onUserCreated={handleUserCreated}
-          onCancel={handleRegistrationCancel}
-        />
-      )}
     </div>
   );
 };

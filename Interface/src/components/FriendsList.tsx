@@ -15,9 +15,10 @@ interface FriendsListProps {
   onCreateGroup: () => void;
   selectedFriend: string | null;
   onAddFriend: () => void;
+  refreshTrigger?: number; // Add this to trigger refreshes
 }
 
-const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup, selectedFriend, onAddFriend }) => {
+const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup, selectedFriend, onAddFriend, refreshTrigger }) => {
   const [contacts, setContacts] = useState<Friend[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,13 @@ const FriendsList: React.FC<FriendsListProps> = ({ onFriendSelect, onCreateGroup
   useEffect(() => {
     fetchUserContactsAndGroups();
   }, []);
+  
+  // Listen for refreshTrigger changes to refresh data
+  useEffect(() => {
+    if (refreshTrigger !== undefined && refreshTrigger > 0) {
+      fetchUserContactsAndGroups();
+    }
+  }, [refreshTrigger]);
   
   // Listen for changes to selected friend to detect new groups or friends
   useEffect(() => {

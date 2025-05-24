@@ -25,7 +25,13 @@ const Main = () => {
   const [newGroupId, setNewGroupId] = useState<string | null>(null);
   const [addMembersError, setAddMembersError] = useState<string | null>(null);
   const [isAddFriendModalOpen, setIsAddFriendModalOpen] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const navigate = useNavigate();
+
+  // Function to trigger refresh of friends list
+  const triggerRefresh = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
 
   // Check if user is authenticated
   useEffect(() => {
@@ -58,6 +64,7 @@ const Main = () => {
   const handleAddFriend = (friendName: string, friendId: string) => {
     setIsAddFriendModalOpen(false);
     handleFriendSelect(friendName, false); // Use friendName instead of friendId for selection
+    triggerRefresh(); // Refresh friends list after adding friend
   };
 
   const handleAddFriendClick = () => {
@@ -340,7 +347,13 @@ const Main = () => {
     } else {
       setIsAddMembersModalOpen(false);
       setNewGroupId(null);
+      triggerRefresh(); // Refresh friends list after adding members
       console.log('[AddMembers] All members added successfully (on-chain and DB)');
+      
+      // Reload the page after a short delay to ensure UI updates
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     }
   };
 
@@ -356,6 +369,7 @@ const Main = () => {
           onCreateGroup={() => setIsGroupModalOpen(true)}
           selectedFriend={selectedFriend}
           onAddFriend={handleAddFriendClick}
+          refreshTrigger={refreshTrigger}
         />
         
         {selectedFriend ? (

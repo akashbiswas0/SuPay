@@ -11,13 +11,15 @@ interface PayModalProps {
   onClose: () => void;
   friendName: string;
   friendWalletAddress: string;
+  onTransactionSuccess?: () => void;
 }
 
 const PayModal: React.FC<PayModalProps> = ({
   isOpen,
   onClose,
   friendName,
-  friendWalletAddress
+  friendWalletAddress,
+  onTransactionSuccess
 }) => {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -66,6 +68,11 @@ const PayModal: React.FC<PayModalProps> = ({
       });
 
       console.log('Payment successful:', result);
+
+      // Call the refresh callback to update parent component data
+      if (onTransactionSuccess) {
+        onTransactionSuccess();
+      }
 
       // Reset form and close modal
       setAmount('');

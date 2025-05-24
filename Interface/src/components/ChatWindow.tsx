@@ -37,91 +37,110 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWall
     setMessages([]);
   }, [friendName]);
 
-  useEffect(() => {
-    if (isGroup) {
-      setLoadingMembers(true);
-      // Fetch group info by name, then fetch members and their balances
-      (async () => {
-        // 1. Get group by name
-        const walletAddress = localStorage.getItem('supay_wallet');
-        let group = null;
-        if (walletAddress) {
-          // This will now fetch both owned groups and groups the user is a member of
-          const groups = await ApiService.getUserGroups(walletAddress);
-          console.log('Fetched all groups (owned and member) for wallet', walletAddress, groups); // LOG
-          group = groups.find((g: any) => g.name === friendName);
-          console.log('Matched group by name', friendName, group); // LOG
-          setCurrentGroup(group); // Store the current group
-        }
-        if (!group) {
-          console.log('No group found for name', friendName); // LOG
-          setGroupMembers([]);
-          setLoadingMembers(false);
-          return;
-        }
-        // 2. Get members from backend
-        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
-        const groupMembersUrl = `${backendUrl}/user_groups/group/${group.id}`;
-        console.log('Fetching group members from', groupMembersUrl); // LOG
-        const res = await fetch(groupMembersUrl);
-        const userGroups = await res.json();
-        console.log('Fetched userGroups for group.id', group.id, userGroups); // LOG
-        if (!Array.isArray(userGroups)) {
-          console.error('userGroups is not an array:', userGroups);
-        }
-        // 3. For each member, get user info and balance from smart contract
-        const members = await Promise.all(userGroups.map(async (ug: any, idx: number) => {
-          console.log('Processing userGroup entry', idx, ug);
-          try {
-            // Use ApiService.getUserById to fetch user details by UUID
-            const user = await ApiService.getUserById(ug.user_id);
-            console.log('Fetched user for member', ug, user); // LOG
-            
-            // Fetch real balance from smart contract if we have a group ID
-            let netBalance: NetBalance | undefined;
-            let displayBalance = 0;
-            
-            if (group.id && user?.wallet_address) {
-              try {
-                console.log('Fetching smart contract balance for:', user.wallet_address, 'in group:', group.id);
-                netBalance = await SuiService.getNetBalance(group.id, user.wallet_address);
-                console.log('Smart contract balance result:', netBalance);
-                
-                // Display net balance (positive means they are owed money, negative means they owe money)
-                if (netBalance.is_positive) {
-                  displayBalance = netBalance.net_amount; // They are owed money (positive)
-                } else {
-                  displayBalance = -netBalance.debt_amount; // They owe money (negative)
-                }
-              } catch (contractError) {
-                console.error('Error fetching balance from smart contract:', contractError);
-                // Fallback to 0 if contract call fails
-                displayBalance = 0;
-              }
-            }
-            
-            return {
-              name: user?.name || ug.user_id,
-              wallet: user?.wallet_address || ug.user_id,
-              balance: displayBalance,
-              netBalance
-            };
-          } catch (err) {
-            console.error('Error fetching user for member', ug, err);
-            return {
-              name: ug.user_id || 'Unknown',
-              wallet: ug.user_id || 'Unknown',
-              balance: 0
-            };
-          }
-        }));
-        console.log('Final group members array:', members);
-        setGroupMembers(members);
-        setLoadingMembers(false);
-      })();
-    } else {
+  // Extract group member fetching logic into a separate function for reuse
+  const fetchGroupMembers = async () => {
+    if (!isGroup) {
       setGroupMembers([]);
+      return;
     }
+
+    setLoadingMembers(true);
+    try {
+      // 1. Get group by name
+      const walletAddress = localStorage.getItem('supay_wallet');
+      let group = null;
+      if (walletAddress) {
+        // This will now fetch both owned groups and groups the user is a member of
+        const groups = await ApiService.getUserGroups(walletAddress);
+        console.log('Fetched all groups (owned and member) for wallet', walletAddress, groups); // LOG
+        group = groups.find((g: any) => g.name === friendName);
+        console.log('Matched group by name', friendName, group); // LOG
+        setCurrentGroup(group); // Store the current group
+      }
+      if (!group) {
+        console.log('No group found for name', friendName); // LOG
+        setGroupMembers([]);
+        setLoadingMembers(false);
+        return;
+      }
+      // 2. Get members from backend
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+      const groupMembersUrl = `${backendUrl}/user_groups/group/${group.id}`;
+      console.log('Fetching group members from', groupMembersUrl); // LOG
+      const res = await fetch(groupMembersUrl);
+      const userGroups = await res.json();
+      console.log('Fetched userGroups for group.id', group.id, userGroups); // LOG
+      if (!Array.isArray(userGroups)) {
+        console.error('userGroups is not an array:', userGroups);
+      }
+      // 3. For each member, get user info and balance from smart contract
+      const members = await Promise.all(userGroups.map(async (ug: any, idx: number) => {
+        console.log('Processing userGroup entry', idx, ug);
+        try {
+          // Use ApiService.getUserById to fetch user details by UUID
+          const user = await ApiService.getUserById(ug.user_id);
+          console.log('Fetched user for member', ug, user); // LOG
+          
+          // Fetch real balance from smart contract if we have a group ID
+          let netBalance: NetBalance | undefined;
+          let displayBalance = 0;
+          
+          if (group.id && user?.wallet_address) {
+            try {
+              console.log('Fetching smart contract balance for:', user.wallet_address, 'in group:', group.id);
+              netBalance = await SuiService.getNetBalance(group.id, user.wallet_address);
+              console.log('Smart contract balance result:', netBalance);
+              
+              // Display net balance (positive means they are owed money, negative means they owe money)
+              if (netBalance.is_positive) {
+                displayBalance = netBalance.net_amount; // They are owed money (positive)
+              } else {
+                displayBalance = -netBalance.debt_amount; // They owe money (negative)
+              }
+            } catch (contractError) {
+              console.error('Error fetching balance from smart contract:', contractError);
+              // Fallback to 0 if contract call fails
+              displayBalance = 0;
+            }
+          }
+          
+          return {
+            name: user?.name || ug.user_id,
+            wallet: user?.wallet_address || ug.user_id,
+            balance: displayBalance,
+            netBalance
+          };
+        } catch (err) {
+          console.error('Error fetching user for member', ug, err);
+          return {
+            name: ug.user_id || 'Unknown',
+            wallet: ug.user_id || 'Unknown',
+            balance: 0
+          };
+        }
+      }));
+      console.log('Final group members array:', members);
+      setGroupMembers(members);
+    } catch (error) {
+      console.error('Error fetching group members:', error);
+      setGroupMembers([]);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGroupMembers();
+  }, [friendName, isGroup]);
+
+  // Refresh function to be called after transactions
+  const refreshData = () => {
+    console.log('Refreshing data after transaction...');
+    fetchGroupMembers();
+  };
+
+  useEffect(() => {
+    // The extracted function already handles this logic
   }, [friendName, isGroup]);
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -269,6 +288,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWall
                 }}
                 groupId={currentGroup.id}
                 groupName={currentGroup.name}
+                onTransactionSuccess={refreshData}
               />
               <MakeSplitModal
                 isOpen={showSplitModal}
@@ -276,6 +296,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWall
                 groupId={currentGroup.id}
                 groupName={currentGroup.name}
                 groupMembers={groupMembers}
+                onTransactionSuccess={refreshData}
               />
             </>
           ) : (
@@ -291,6 +312,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ friendName, isGroup, friendWall
           onClose={() => setShowPayModal(false)}
           friendName={friendName}
           friendWalletAddress={friendWalletAddress}
+          onTransactionSuccess={refreshData}
         />
       )}
     </div>

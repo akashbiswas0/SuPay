@@ -12,6 +12,7 @@ interface SettleDebtsModalProps {
   onClose: () => void;
   groupId: string;
   groupName: string;
+  onTransactionSuccess?: () => void;
 }
 
 interface DebtInfo {
@@ -25,7 +26,8 @@ const SettleDebtsModal: React.FC<SettleDebtsModalProps> = ({
   isOpen, 
   onClose, 
   groupId,
-  groupName 
+  groupName,
+  onTransactionSuccess 
 }) => {
   const { account, signAndExecuteTransactionBlock } = useWallet();
   const [debts, setDebts] = useState<DebtInfo[]>([]);
@@ -226,12 +228,22 @@ const SettleDebtsModal: React.FC<SettleDebtsModalProps> = ({
       if (failedSettlements === 0) {
         setSuccessMessage(`Successfully paid ${totalSettled} SUI across ${debts.length} debt(s)`);
         setDebts([]); // Clear debts after settlement
+        
+        // Call the refresh callback to update parent component data
+        if (onTransactionSuccess) {
+          onTransactionSuccess();
+        }
       } else {
         const successfulSettlements = debts.length - failedSettlements;
         if (successfulSettlements > 0) {
           setSuccessMessage(`Paid ${totalSettled} SUI in ${successfulSettlements} transaction(s). ${failedSettlements} failed.`);
           // Refresh debt list to show updated state
           fetchUserDebts();
+          
+          // Call the refresh callback to update parent component data
+          if (onTransactionSuccess) {
+            onTransactionSuccess();
+          }
         } else {
           setError('All payment transactions failed. Please try again.');
         }
@@ -306,6 +318,11 @@ const SettleDebtsModal: React.FC<SettleDebtsModalProps> = ({
         setSuccessMessage(`Successfully paid ${debt.amount} SUI to ${debt.creditorName}`);
         setTimeout(() => setSuccessMessage(null), 3000);
         
+        // Call the refresh callback to update parent component data
+        if (onTransactionSuccess) {
+          onTransactionSuccess();
+        }
+        
         console.log(`Successfully paid ${debt.amount} SUI to ${debt.creditorName}`);
       } else {
         console.error(`Failed to pay debt to ${debt.creditorName}:`, paymentResult.error);
@@ -331,7 +348,7 @@ const SettleDebtsModal: React.FC<SettleDebtsModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md border-4 border-black shadow-brutal bg-white">
+      <DialogContent className="sm:max-w-2xl border-4 border-black shadow-brutal bg-white">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold border-b-4 border-black pb-2">
             Settle Outstanding Debts

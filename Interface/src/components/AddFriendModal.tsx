@@ -127,6 +127,11 @@ const AddFriendModal: React.FC<AddFriendModalProps> = ({
       console.log('Friend added successfully:', response.data);
       onAddFriend(userName, userId); // Call onAddFriend with friend name and ID
       handleClose(); // Close modal on success
+      
+      // Reload the page to refresh all data
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
 
     } catch (err) {
       console.error('Error adding friend:', err);
